@@ -20,7 +20,7 @@ $refs   = @('/reference:System.dll','/reference:System.Core.dll','/reference:Sys
 
 # 注意：下面两个源文件清单是手写的，新增/删除 src\*.cs 时必须同步修改。
 $srcEngine = @('Lexicon.cs','Namer.cs','Settings.cs','EngineTest.cs','Translation.cs','Theme.cs','Anim.cs','TabStrip.cs','Hotkey.cs') | ForEach-Object { Join-Path $root "src\$_" }
-$srcGui = @('Lexicon.cs','Namer.cs','Settings.cs','Util.cs','Theme.cs','Anim.cs','TabStrip.cs','ModernForm.cs','DarkCombo.cs','Program.cs','TrayApp.cs','MainForm.cs','FloatForm.cs','LexiconForm.cs','Guide.cs','LanguagePreset.cs','Translation.cs','TextInfoForm.cs','TranslateHelp.cs','UnknownLog.cs','TranslateForm.cs','Hotkey.cs','SettingsForm.cs','AutoDict.cs','ShotModel.cs','ShotGeom.cs','ShotForm.cs','ShotToolbar.cs') | ForEach-Object { Join-Path $root "src\$_" }
+$srcGui = @('Lexicon.cs','Namer.cs','Settings.cs','Util.cs','Theme.cs','Anim.cs','TabStrip.cs','SingleInstance.cs','ModernForm.cs','DarkCombo.cs','Program.cs','TrayApp.cs','MainForm.cs','FloatForm.cs','LexiconForm.cs','Guide.cs','LanguagePreset.cs','Translation.cs','TextInfoForm.cs','TranslateHelp.cs','UnknownLog.cs','TranslateForm.cs','Hotkey.cs','SettingsForm.cs','AutoDict.cs','ShotModel.cs','ShotGeom.cs','ShotForm.cs','ShotToolbar.cs') | ForEach-Object { Join-Path $root "src\$_" }
 
 if (-not (Test-Path "$root\assets\app.ico")) {
     Write-Host '[1/4] 生成图标 ...'

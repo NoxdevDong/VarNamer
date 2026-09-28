@@ -27,6 +27,7 @@ namespace VarNamer
         private Label lblLexStats;
         private FlowLayoutPanel chips;
         private Label lblUnknown;
+        private Label lblReverse;
         private DarkCombo cboPrefix;
         private DarkCombo cboLang;
         private ToggleCheck chkBrief;
@@ -228,6 +229,17 @@ namespace VarNamer
                 if (u != null) { addCn.Text = u; addEn.InnerBox.Focus(); }
             };
             cardTokens.Controls.Add(lblUnknown);
+
+            // 英文反查中文：输入纯英文时显示对应的中文（score → 成绩 / 分数）
+            lblReverse = new Label();
+            lblReverse.Dock = DockStyle.Bottom;
+            lblReverse.Height = Theme.S(22);
+            lblReverse.ForeColor = Theme.Accent;
+            lblReverse.Font = Theme.FontCaption;
+            lblReverse.TextAlign = ContentAlignment.MiddleLeft;
+            lblReverse.AutoEllipsis = true;
+            lblReverse.Visible = false;
+            cardTokens.Controls.Add(lblReverse);
             right.Controls.Add(cardTokens, 0, 0);
 
             TableLayoutPanel tokenBottom = new TableLayoutPanel();
@@ -710,6 +722,14 @@ namespace VarNamer
             SelectFirstCopyableRow();
             hoverRow = -1;
             grid.ResumeLayout();
+
+            if (lblReverse != null)
+            {
+                string typed = input.Text == null ? "" : input.Text.Trim();
+                string cnOne = (typed.Length > 0 && !TextUtil.HasCjk(typed)) ? state.Lex.LookupPhrase(typed) : null;
+                lblReverse.Visible = cnOne != null;
+                if (cnOne != null) lblReverse.Text = "英文反查中文：" + typed + " → " + cnOne;
+            }
 
             chips.SuspendLayout();
             chips.Controls.Clear();

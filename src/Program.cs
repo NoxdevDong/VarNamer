@@ -8,7 +8,7 @@ namespace VarNamer
 {
     internal static class AppVersion
     {
-        public const string Value = "5.0";
+        public const string Value = "5.3";
     }
 
     internal static class Program
@@ -29,12 +29,10 @@ namespace VarNamer
 
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            if (AlreadyRunning())
+            if (!Single.IsFirstInstance())
             {
-                MessageBox.Show("已有一个 VarNamer 在运行：" + Environment.NewLine + Environment.NewLine + ReadRunningInfo()
-                    + Environment.NewLine + Environment.NewLine
-                    + "如果你看到的界面与预期不符（例如旧版本外观），请右键托盘图标 → 退出，然后重新启动本程序。",
-                    "VarNamer 已在运行", MessageBoxButtons.OK);   // 信息类提示不带图标 → 不播系统提示音
+                // 已经有实例在跑：通知它把窗口弹到前台，本进程直接退出（不再开第二个）
+                Single.NotifyExisting();
                 return 0;
             }
             try
@@ -131,29 +129,6 @@ namespace VarNamer
             }
             catch (Exception) { }
         }
-
-        private static string ReadRunningInfo()
-        {
-            try
-            {
-                string path = Path.Combine(Config.DataDir, "running.txt");
-                if (!File.Exists(path)) return "(未能读取运行信息，版本见其窗口标题栏)";
-                return File.ReadAllText(path, new UTF8Encoding(false)).Trim();
-            }
-            catch (Exception) { return "(未能读取运行信息)"; }
-        }
-
-        private static bool AlreadyRunning()
-        {
-            try
-            {
-                bool created;
-                System.Threading.Mutex m = new System.Threading.Mutex(true, "VarNamer.SingleInstance.v1", out created);
-                if (!created) return true;
-                GC.KeepAlive(m);
-                return false;
-            }
-            catch (Exception) { return false; }
-        }
     }
 }
+

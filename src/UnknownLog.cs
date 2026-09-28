@@ -11,9 +11,29 @@ namespace VarNamer
     {
         private static readonly HashSet<string> seen = new HashSet<string>(StringComparer.Ordinal);
 
+        private static string pathCache;
+
+        // 未收录词清单：优先放在「程序目录\dict\」（和词库文件在一起，方便顺手补齐）；
+        // 若该目录不可写（例如装到 Program Files 且无权限），自动回退到用户数据目录。
         public static string LogPath
         {
-            get { return Path.Combine(Config.DataDir, "unknowns.txt"); }
+            get
+            {
+                if (pathCache != null) return pathCache;
+                try
+                {
+                    string dir = AutoDict.DictFolderPath;
+                    if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+                    string probe = Path.Combine(dir, ".vn_write_probe");
+                    File.WriteAllText(probe, "ok");
+                    File.Delete(probe);
+                    pathCache = Path.Combine(dir, "unknowns.txt");
+                    return pathCache;
+                }
+                catch (Exception) { }
+                pathCache = Path.Combine(Config.DataDir, "unknowns.txt");
+                return pathCache;
+            }
         }
 
         public static void Record(List<string> unknowns)

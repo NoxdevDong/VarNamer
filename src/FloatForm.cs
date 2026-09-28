@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
@@ -103,13 +104,37 @@ namespace VarNamer
 
         private ToolTip tip;
 
+        private int tagW = Theme.S(64);
+
+        // 标签列宽度：由外部按“最长的那个标签”算出来，避免 "camelCase(每词≤4)" 被截断
+        public int TagWidth
+        {
+            get { return tagW; }
+            set { if (tagW == value) return; tagW = value; LayoutRow(); }
+        }
+
+        public string TagText { get { return lblTag == null ? "" : lblTag.Text; } }
+
+        // 中文值要用中文字体：Consolas 没有汉字，回退字体的度量会让行高/基线看着不对
+        public void SetValueText(string v, bool cjkFont)
+        {
+            if (lblVal != null) lblVal.Font = cjkFont ? Theme.FontBodyLg : Theme.FontMono;
+            Value = v;
+        }
+
+        private void LayoutRow()
+        {
+            if (lblTag == null) return;
+            int valX = Theme.S(14) + tagW + Theme.S(6);
+            lblTag.SetBounds(Theme.S(14), 0, tagW, Height);
+            lblCopy.SetBounds(Width - Theme.S(56), 0, Theme.S(44), Height);
+            lblVal.SetBounds(valX, 0, Math.Max(Theme.S(10), Width - valX - Theme.S(58)), Height);
+        }
+
         protected override void OnResize(EventArgs e)
         {
             base.OnResize(e);
-            if (lblTag == null) return;
-            lblTag.SetBounds(Theme.S(14), 0, Theme.S(64), Height);
-            lblCopy.SetBounds(Width - Theme.S(56), 0, Theme.S(44), Height);
-            lblVal.SetBounds(Theme.S(80), 0, Math.Max(Theme.S(10), Width - Theme.S(80) - Theme.S(58)), Height);
+            LayoutRow();
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -179,7 +204,7 @@ namespace VarNamer
         private int group;
         private static readonly string[] GroupNames = new string[] { "混合", "全称", "简短", "缩写" };
 
-        private static readonly string[] RowTags = new string[] { "Pascal", "camel", "snake", "简短", "缩写" };
+        private static readonly string[] RowTags = new string[] { "Pascal", "camel", "snake", "简短", "缩写", "中文" };
 
         public static readonly int RowH = Theme.S(34);
         private static readonly int InputH = Theme.S(58);
@@ -489,10 +514,12 @@ namespace VarNamer
             return n;
         }
 
+        // 精确高度：标题栏 + 输入区 + 提示行 + 切换条 + 卡片内边距 + 可见行 + 卡片外边距
+        // （之前少算了卡片上下内边距，最后一行会被裁掉几个像素）
         private int FullHeight()
         {
-            return HeaderH + InputH + GroupBarH + Theme.S(8) + rowsBox.Padding.Vertical
-                 + VisibleRowCount() * (RowH + 1) + Theme.S(10) + TipH;
+            return HeaderH + InputH + TipH + GroupBarH
+                 + rowsHost.Padding.Vertical + VisibleRowCount() * RowH + rowsWrap.Padding.Vertical;
         }
 
         private int EmptyHeight()
@@ -526,7 +553,10 @@ namespace VarNamer
                 ApplyState();
                 int w = expandedW > 0 ? expandedW : state.Cfg.FloatW;
                 if (w > Width) Width = w;      // 还原展开宽度（高度由 ApplyState 定）
-                ClampToScreen();
+                // 关键：按“当前坐标”钳制并写回，而不是读回收起前记住的旧坐标
+                // （否则把挂件拖到别处后展开会跳回原点）
+                ClampChipOnScreen();
+                SavePosition();
                 input.InnerBox.Focus();
             }
         }
@@ -569,7 +599,11 @@ namespace VarNamer
             bool moved = chipMoved;
             chipMoved = false;
             if (!moved) Expand();            // 没拖动 → 点击展开
-            else Dim();                      // 拖完回到半透明
+            else
+            {
+                SavePosition();              // 挂件拖到哪就记到哪（挂件态不会覆盖展开宽度）
+                Dim();                       // 拖完回到半透明
+            }
         }
 
         private bool HasAnyValue()
@@ -739,6 +773,34 @@ namespace VarNamer
             NameResult r = Namer.Create(input.Text, state.Lex, state.Opt);
             state.Current = r;
 
+            // 纯英文输入：只显示一行「中文」反查结果（风格行与切换条都隐藏）
+            string typedEn = input.Text == null ? "" : input.Text.Trim();
+            if (typedEn.Length > 0 && !TextUtil.HasCjk(typedEn))
+            {
+                for (int i = 0; i < rows.Length; i++)
+                {
+                    rows[i].Visible = false;
+                    rowsBox.RowStyles[i].Height = 0;
+                    rows[i].Value = "";
+                }
+                if (groupStrip != null) groupStrip.Visible = false;
+                string cnOne = state.Lex.LookupPhrase(typedEn);
+                int ri = rows.Length - 1;
+                if (cnOne != null)
+                {
+                    rows[ri].SetTagText("中文");
+                    rows[ri].SetValueText(cnOne, true);
+                    rows[ri].Visible = true;
+                    rowsBox.RowStyles[ri].Height = RowH;
+                }
+                int tagCn = TextRenderer.MeasureText("中文", Theme.FontSmall).Width + Theme.S(12);
+                for (int i = 0; i < rows.Length; i++) rows[i].TagWidth = Math.Max(Theme.S(56), tagCn);
+                ApplyState();
+                lblTip.Text = cnOne != null ? "英文反查中文 · 点这一行即复制" : "词库里没查到这个词的中文";
+                return;
+            }
+            if (groupStrip != null) groupStrip.Visible = true;
+
             // 风格组：0 混合（随语言预设）/ 1 全称 / 2 简短 / 3 缩写
             string lang = state.Cfg.Language;
             int[] src;
@@ -757,6 +819,41 @@ namespace VarNamer
                 rows[i].SetTagText(RowLabel(idx, r, lang));
                 rows[i].Value = (idx >= 0 && idx < r.Lines.Count) ? r.Lines[idx].Value : "";
             }
+
+            // 输入是纯英文时，反向查一遍词库：score → 成绩 / 分数 / 得分
+            int revIdx = rows.Length - 1;                 // 最后一行「中文」专门给反查用
+            bool revOn = false;
+            string typed2 = input.Text == null ? "" : input.Text.Trim();
+            if (typed2.Length > 0 && !TextUtil.HasCjk(typed2))
+            {
+                List<string> cn = state.Lex.ReverseLookup(typed2, 8);
+                if (cn.Count > 0)
+                {
+                    rows[revIdx].SetTagText("中文");
+                    rows[revIdx].Value = string.Join(" / ", cn.ToArray());
+                    rows[revIdx].Visible = true;
+                    rowsBox.RowStyles[revIdx].Height = RowH;
+                    revOn = true;
+                }
+            }
+            if (!revOn)
+            {
+                rows[revIdx].Visible = false;
+                rowsBox.RowStyles[revIdx].Height = 0;
+                rows[revIdx].Value = "";
+            }
+
+            // 标签列宽度自适应：按最长标签量一次，避免 "camelCase(每词≤4)" 之类被截断
+            int maxTag = 0;
+            for (int i = 0; i < rows.Length; i++)
+            {
+                if (!rows[i].Visible) continue;
+                int tw = TextRenderer.MeasureText(rows[i].TagText, Theme.FontSmall).Width;
+                if (tw > maxTag) maxTag = tw;
+            }
+            int tagPx = Math.Max(Theme.S(56), Math.Min(maxTag + Theme.S(12), (int)(Width * 0.44)));
+            for (int i = 0; i < rows.Length; i++) rows[i].TagWidth = tagPx;
+
             ApplyState();
 
             if (r.Unknowns.Count > 0)
@@ -776,7 +873,16 @@ namespace VarNamer
             if (idx < 0 || idx >= r.Lines.Count) return "";
             string t = r.Lines[idx].Label;
             int sp = t.IndexOf(' ');
-            return sp > 0 ? t.Substring(sp + 1) : t;
+            if (sp > 0) t = t.Substring(sp + 1);
+            // 去掉「每词≤4 / 每段≤3」这类长度说明；但保留 首字母(小写)/(大写) 以免两行重名
+            int br = t.IndexOfAny(new char[] { '(', '（' });
+            if (br > 0)
+            {
+                int close = t.IndexOfAny(new char[] { ')', '）' }, br);
+                string inside = close > br ? t.Substring(br + 1, close - br - 1) : "";
+                if (inside.StartsWith("每")) t = (t.Substring(0, br) + (close > br ? t.Substring(close + 1) : "")).Trim();
+            }
+            return t;
         }
 
         public void ShowFloat()

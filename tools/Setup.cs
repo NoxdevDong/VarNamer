@@ -19,7 +19,7 @@ namespace VarNamerSetup
     {
         internal const string AppName = "VarNamer";
         internal const string DisplayName = "VarNamer 中文变量取名";
-        internal const string DisplayVersion = "5.0.0";
+        internal const string DisplayVersion = "5.3.0";
         internal const string Publisher = "VarNamer";
         internal const string UninstallKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\VarNamer";
         internal const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";

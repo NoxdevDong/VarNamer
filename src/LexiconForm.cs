@@ -24,6 +24,7 @@ namespace VarNamer
         private Label lbEngine, lblTrKey, lblTrAuto;
         private int activeTab;
         private bool suppressReload;
+        private static Lexicon builtinLex;      // 内置词库（用于查词，只建一次）
 
         public LexiconForm(AppState st)
         {
@@ -127,6 +128,8 @@ namespace VarNamer
             {
                 if (e.KeyCode == Keys.Escape) { suppressReload = true; txtSearch.Text = ""; suppressReload = false; txtSearch.InnerBox.Refresh(); Reload(); e.SuppressKeyPress = true; }
             };
+            ToolTip searchTip = new ToolTip();
+            searchTip.SetToolTip(txtSearch, "输入中文查英文，输入英文查中文（内置词库也会一起搜）");
             searchRow.Controls.Add(txtSearch, 1, 0);
 
             FlatButton btnClearSearch = new FlatButton();
@@ -168,7 +171,7 @@ namespace VarNamer
 
             CardPanel card = new CardPanel();
             card.Title = "词条列表";
-            card.Hint = "双击载入到下方输入框";
+            card.Hint = "中文↔英文双向搜索 · 双击载入";
             card.Dock = DockStyle.Fill;
             card.Padding = new Padding(Theme.S(12), Theme.S(32), Theme.S(12), Theme.S(12));
             card.Margin = new Padding(0, 0, 0, Theme.S(10));
@@ -177,9 +180,11 @@ namespace VarNamer
             Theme.StyleGrid(grid, false);
             grid.Columns.Add(Theme.TextColumn("中文", false, Theme.TextPrimary));
             grid.Columns.Add(Theme.TextColumn("英文", true, Theme.TextSecondary));
+            grid.Columns.Add(Theme.TextColumn("来源", false, Theme.TextMuted));
             grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
-            grid.Columns[0].FillWeight = 30f;
-            grid.Columns[1].FillWeight = 70f;
+            grid.Columns[0].FillWeight = 28f;
+            grid.Columns[1].FillWeight = 56f;
+            grid.Columns[2].FillWeight = 16f;
             grid.CellDoubleClick += delegate(object s, DataGridViewCellEventArgs e)
             {
                 if (e.RowIndex < 0) return;
@@ -525,8 +530,9 @@ namespace VarNamer
             lbUnknown.ForeColor = Theme.TextMuted;
             lbUnknown.TextAlign = ContentAlignment.TopLeft;
             lbUnknown.Text = "未命中的字会自动记到这个文件：" + Environment.NewLine
-                + Path.Combine(Config.DataDir, "unknowns.txt") + Environment.NewLine + Environment.NewLine
-                + "到「词条」页补一条即可永久生效，不需要联网。";
+                + UnknownLog.LogPath + Environment.NewLine + Environment.NewLine
+                + "到「词条」页补一条即可永久生效，不需要联网。" + Environment.NewLine
+                + "（默认放在程序目录的 dict 文件夹里，和词库文件在一起；若该目录不可写会自动改用用户数据目录）";
             cardUnknown.Controls.Add(lbUnknown);
             pageTrans.Controls.Add(cardUnknown, 0, 1);
 
@@ -663,17 +669,45 @@ namespace VarNamer
                 }
                 hits.Add(i);
             }
-            int shown = hits.Count;
+            // 有关键词时，同时在内置词库里双向查一遍（输入中文查英文 / 输入英文查中文）
+            List<KeyValuePair<string, string>> builtinHits = new List<KeyValuePair<string, string>>();
+            if (kw.Length > 0)
+            {
+                try
+                {
+                    if (builtinLex == null) builtinLex = Lexicon.Create();
+                    List<KeyValuePair<string, string>> all = builtinLex.Search(kw, 300);
+                    HashSet<string> mine = new HashSet<string>(StringComparer.Ordinal);
+                    for (int i = 0; i < entries.Count; i++) mine.Add(entries[i][0]);
+                    for (int i = 0; i < all.Count; i++)
+                        if (!mine.Contains(all[i].Key)) builtinHits.Add(all[i]);
+                }
+                catch (Exception) { }
+            }
+
+            int userShown = hits.Count;
+            int shown = userShown + builtinHits.Count;
             grid.SuspendLayout();
             grid.Rows.Clear();
             if (shown > 0)
             {
                 grid.Rows.Add(shown);                       // 批量建行
-                for (int k = 0; k < shown; k++)
+                int r = 0;
+                for (int k = 0; k < userShown; k++, r++)
                 {
-                    DataGridViewRow row = grid.Rows[k];
+                    DataGridViewRow row = grid.Rows[r];
                     row.Cells[0].Value = entries[hits[k]][0];
                     row.Cells[1].Value = entries[hits[k]][1];
+                    row.Cells[2].Value = "我的";
+                    row.Tag = "u";
+                }
+                for (int k = 0; k < builtinHits.Count; k++, r++)
+                {
+                    DataGridViewRow row = grid.Rows[r];
+                    row.Cells[0].Value = builtinHits[k].Key;
+                    row.Cells[1].Value = builtinHits[k].Value;
+                    row.Cells[2].Value = "内置";
+                    row.Tag = "b";
                 }
             }
             grid.ResumeLayout();
@@ -682,20 +716,21 @@ namespace VarNamer
                 lblEmpty.Visible = shown == 0;
                 if (shown == 0)
                 {
-                    lblEmpty.Text = entries.Count == 0
-                        ? ("还没有你自己的词条" + Environment.NewLine + Environment.NewLine
-                           + "在下面「新增 / 覆盖词条」加一条，或到「导入导出」页导入 txt。")
-                        : ("没有匹配「" + kw + "」的词条");
+                    lblEmpty.Text = kw.Length > 0
+                        ? ("没有匹配「" + kw + "」的词条" + Environment.NewLine + Environment.NewLine
+                           + "换个关键词试试（中文英文都行），或在下面新增一条。")
+                        : ("还没有你自己的词条" + Environment.NewLine + Environment.NewLine
+                           + "在下面「新增 / 覆盖词条」加一条，或到「导入导出」页导入 txt。");
                     lblEmpty.BringToFront();
                 }
             }
             if (lblCount != null)
                 lblCount.Text = kw.Length > 0
-                    ? ("匹配 " + shown + " / " + entries.Count + " 条")
-                    : ("共 " + entries.Count + " 条");
+                    ? ("命中 " + shown + " 条（我的 " + userShown + " · 内置 " + builtinHits.Count + "）")
+                    : ("我的词条 " + entries.Count + " 条");
             lblStatus.Text = kw.Length > 0
-                ? ("已按「" + kw + "」过滤，显示 " + shown + " 条；双击条目可载入下方输入框")
-                : "共 " + entries.Count + " 条用户词条（未保存的改动点「保存并关闭」生效）";
+                ? ("已按「" + kw + "」双向搜索（中文↔英文），命中 " + shown + " 条；双击任意一行载入下方输入框")
+                : "共 " + entries.Count + " 条用户词条（搜索框可查内置词库；未保存的改动点「保存并关闭」生效）";
         }
 
         private void AddEntry()
@@ -718,14 +753,21 @@ namespace VarNamer
         {
             if (grid.SelectedRows.Count == 0) return;
             List<string> drop = new List<string>();
+            int builtinSel = 0;
             for (int i = 0; i < grid.SelectedRows.Count; i++)
-                drop.Add(grid.SelectedRows[i].Cells[0].Value as string);
+            {
+                DataGridViewRow row = grid.SelectedRows[i];
+                if ((row.Tag as string) == "b") { builtinSel++; continue; }   // 内置词条不参与删除
+                drop.Add(row.Cells[0].Value as string);
+            }
             for (int d = 0; d < drop.Count; d++)
             {
                 for (int i = entries.Count - 1; i >= 0; i--)
                     if (entries[i][0] == drop[d]) entries.RemoveAt(i);
             }
             Reload();
+            if (builtinSel > 0)
+                lblStatus.Text = "内置词条不能直接删除；双击它载入到下方，改成你自己的即可覆盖";
         }
 
         // 检测本地词库并导入。只扫程序自己的目录（程序目录 + 程序目录\dict）。

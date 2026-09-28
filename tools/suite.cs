@@ -365,6 +365,263 @@ namespace VarNamer
             }
             catch (Exception ex) { Ok("新功能校验", false, ex.Message); }
 
+            Out("== I 悬浮窗缩小为桌面挂件 ==");
+            try
+            {
+                AppState s6 = new AppState();
+                s6.Cfg.GuideShown = true; s6.Cfg.Save();
+                FloatForm ff = new FloatForm(s6);
+                ff.StartPosition = FormStartPosition.Manual;
+                ff.Location = new Point(-4000, -4000);
+                ff.Show(); Pump(350);
+                ff.SetInput("数学成绩排名"); Pump(300);
+                int w0 = ff.Width, h0 = ff.Height;
+
+                FlatButton btnCol = null;
+                foreach (Control ctl in All(ff)) { FlatButton b = ctl as FlatButton; if (b != null && b.Text == "缩") btnCol = b; }
+                Ok("标题栏有「缩」按钮", btnCol != null, btnCol == null ? "未找到" : "文案=" + btnCol.Text);
+
+                btnCol.PerformClick(); Pump(400);
+                Panel titleBar = (Panel)Fld(ff, "TitleBar");
+                Panel chip = (Panel)Fld(ff, "chipPanel");
+                Ok("缩小后 = 150x38 且标题栏隐藏", ff.Width == Theme.S(150) && ff.Height == Theme.S(38) && titleBar != null && !titleBar.Visible,
+                    ff.Width + "x" + ff.Height + " 标题栏可见=" + (titleBar != null && titleBar.Visible));
+                Ok("挂件面板可见", chip != null && chip.Visible, "chip.Visible=" + (chip != null && chip.Visible));
+                int ovChip = Scan(ff, ff); overlaps += ovChip;
+                Ok("挂件态无重叠/裁切", ovChip == 0 && ClipIssues(ff) == 0, "重叠 " + ovChip + " 裁切 " + ClipIssues(ff));
+
+                MouseEventArgs me = new MouseEventArgs(MouseButtons.Left, 1, 0, 0, 0);
+                Inv(ff, "ChipDown", new object[] { chip, me });
+                Inv(ff, "ChipUp", new object[] { chip, me });
+                Pump(400);
+                Ok("点挂件展开回原尺寸", ff.Width == w0 && ff.Height == h0, ff.Width + "x" + ff.Height + "（原 " + w0 + "x" + h0 + "）");
+
+                ff.ToggleCollapsed(); Pump(350);
+                int cw = ff.Width;
+                Point before = ff.Location;
+                Inv(ff, "ChipDown", new object[] { chip, new MouseEventArgs(MouseButtons.Left, 1, 0, 0, 0) });
+                // 沙箱禁止移动鼠标，改为直接构造“已位移 40x25”的状态，验证移动与“拖动后不展开”逻辑
+                Point cur = Cursor.Position;
+                SetFld(ff, "chipDrag", new Point(cur.X - 40, cur.Y - 25));
+                Inv(ff, "ChipMove", new object[] { chip, new MouseEventArgs(MouseButtons.Left, 1, 0, 0, 0) });
+                Point afterMove = ff.Location;
+                Inv(ff, "ChipUp", new object[] { chip, new MouseEventArgs(MouseButtons.Left, 1, 0, 0, 0) });
+                Pump(300);
+                bool movedBy = (afterMove.X - before.X) == 40 && (afterMove.Y - before.Y) == 25;
+                Ok("挂件可拖动且拖动后不展开", movedBy && ff.Width == cw && ff.Location == afterMove,
+                    "位移=" + (afterMove.X - before.X) + "," + (afterMove.Y - before.Y) + " 宽=" + ff.Width + "（拖动后应保持 150 且不展开）");
+
+                ff.SetInput("缓存命中率"); Pump(350);
+                Ok("挂件态收到文字自动展开", !ff.Collapsed && ff.Width > cw, "已展开=" + !ff.Collapsed + " 宽=" + ff.Width);
+
+                ff.ToggleCollapsed(); Pump(300);
+                ff.SavePosition();
+                Ok("挂件态保存不覆盖展开宽度", s6.Cfg.FloatW > 200, "Cfg.FloatW=" + s6.Cfg.FloatW);
+                ff.Dispose();
+            }
+            catch (Exception ex) { Ok("挂件功能", false, ex.Message); }
+
+            Out("== J 本轮三个修复 ==");
+            try
+            {
+                // ① 挂件拖走后展开 → 应停在新位置，不回原点
+                AppState s7 = new AppState();
+                s7.Cfg.GuideShown = true; s7.Cfg.Save();
+                FloatForm fx = new FloatForm(s7);
+                fx.StartPosition = FormStartPosition.Manual;
+                fx.Location = new Point(-4000, -4000);
+                fx.Show(); Pump(350);
+                fx.SetInput("数学成绩排名"); Pump(250);
+                fx.ToggleCollapsed(); Pump(400);
+                Panel chip2 = (Panel)Fld(fx, "chipPanel");
+                Point p0 = fx.Location;
+                Inv(fx, "ChipDown", new object[] { chip2, new MouseEventArgs(MouseButtons.Left, 1, 0, 0, 0) });
+                Point cur2 = Cursor.Position;
+                SetFld(fx, "chipDrag", new Point(cur2.X - 60, cur2.Y - 30));
+                Inv(fx, "ChipMove", new object[] { chip2, new MouseEventArgs(MouseButtons.Left, 1, 0, 0, 0) });
+                Inv(fx, "ChipUp", new object[] { chip2, new MouseEventArgs(MouseButtons.Left, 1, 0, 0, 0) });
+                Pump(200);
+                Point dragged = fx.Location;
+                SetFld(fx, "chipDrag", new Point(cur2.X - 60, cur2.Y - 30));
+                Inv(fx, "ChipDown", new object[] { chip2, new MouseEventArgs(MouseButtons.Left, 1, 0, 0, 0) });
+                SetFld(fx, "chipDrag", new Point(Cursor.Position.X - 60, Cursor.Position.Y - 30));
+                Inv(fx, "ChipMove", new object[] { chip2, new MouseEventArgs(MouseButtons.Left, 1, 0, 0, 0) });
+                Inv(fx, "ChipUp", new object[] { chip2, new MouseEventArgs(MouseButtons.Left, 1, 0, 0, 0) });
+                Pump(200);
+                Point dragged2 = fx.Location;
+                fx.Expand(); Pump(400);
+                Ok("① 挂件拖走后展开停在新位置（不回原点）",
+                    fx.Location == dragged2 && (dragged2.X - p0.X) != 0,
+                    "原 " + p0 + " → 拖到 " + dragged2 + " → 展开后 " + fx.Location);
+                Ok("① 拖后位置已写回配置", s7.Cfg.FloatX == dragged2.X && s7.Cfg.FloatY == dragged2.Y,
+                    "Cfg=(" + s7.Cfg.FloatX + "," + s7.Cfg.FloatY + ")");
+                fx.Dispose();
+
+                // ② 未收录词落到 程序目录\dict\
+                string lp = UnknownLog.LogPath;
+                string expect = System.IO.Path.Combine(AutoDict.DictFolderPath, "unknowns.txt");
+                Ok("② 未收录词路径 = 程序目录\\dict\\unknowns.txt", string.Equals(lp, expect, StringComparison.OrdinalIgnoreCase), lp);
+                UnknownLog.Record(new List<string>(new string[] { "駉" }));
+                Ok("② 能写进该文件", System.IO.File.Exists(lp), lp);
+                bool inDictScan = false;
+                foreach (string f in AutoDict.FindAll())
+                    if (string.Equals(System.IO.Path.GetFileName(f), "unknowns.txt", StringComparison.OrdinalIgnoreCase)) inDictScan = true;
+                Ok("② 该文件不会被当成词库扫描", !inDictScan, inDictScan ? "被误当词库" : "已排除");
+
+                // ③ 词库管理双向搜索（含内置词库）
+                AppState s8 = new AppState();
+                s8.Cfg.GuideShown = true; s8.Cfg.Save();
+                System.IO.File.WriteAllText(Config.UserDictPath, "我的专用词=myOwnWord", new UTF8Encoding(false));
+                LexiconForm lx = new LexiconForm(s8);
+                lx.StartPosition = FormStartPosition.Manual;
+                lx.Location = new Point(-4000, -4000);
+                lx.Show(); Pump(300);
+                DarkTextBox sb2 = null;
+                foreach (Control ctl in All((Control)Fld(lx, "pageList")))
+                { DarkTextBox d2 = ctl as DarkTextBox; if (d2 != null && sb2 == null) sb2 = d2; }
+                DataGridView g2 = null;
+                foreach (Control ctl in All(lx)) { DataGridView dg = ctl as DataGridView; if (dg != null) { g2 = dg; break; } }
+                sb2.Text = "score"; Pump(250);
+                int enHits = 0; string enSample = "";
+                for (int i = 0; i < g2.Rows.Count; i++)
+                    if (Convert.ToString(g2.Rows[i].Cells[2].Value) == "内置")
+                    { enHits++; if (enSample.Length == 0) enSample = Convert.ToString(g2.Rows[i].Cells[0].Value) + "=" + Convert.ToString(g2.Rows[i].Cells[1].Value); }
+                Ok("③ 输入英文能查到中文（内置词库）", enHits > 0, "命中 " + enHits + " 条，例：" + enSample);
+                sb2.Text = "成绩"; Pump(250);
+                int cnHits = g2.Rows.Count;
+                string cnSample = cnHits > 0 ? (Convert.ToString(g2.Rows[0].Cells[0].Value) + "=" + Convert.ToString(g2.Rows[0].Cells[1].Value)) : "";
+                Ok("③ 输入中文能查到英文", cnHits > 0, "命中 " + cnHits + " 条，例：" + cnSample);
+                sb2.Text = "myOwnWord"; Pump(250);
+                bool mineHit = g2.Rows.Count == 1 && Convert.ToString(g2.Rows[0].Cells[2].Value) == "我的";
+                Ok("③ 自己的词条优先且不重复", mineHit, g2.Rows.Count + " 行，来源=" + (g2.Rows.Count > 0 ? Convert.ToString(g2.Rows[0].Cells[2].Value) : "无"));
+                // 删除内置行不应误删用户词条
+                sb2.Text = "成绩"; Pump(250);
+                for (int i = 0; i < g2.Rows.Count; i++)
+                    if (Convert.ToString(g2.Rows[i].Cells[2].Value) == "内置") { g2.Rows[i].Selected = true; break; }
+                Inv(lx, "DeleteSelected", new object[0]);
+                Pump(200);
+                Ok("③ 内置行不可删除且不动用户词条", s8.LoadUserDictEntries().Count == 1, "用户词条 " + s8.LoadUserDictEntries().Count + " 条");
+                lx.Close(); lx.Dispose();
+            }
+            catch (Exception ex) { Ok("本轮修复校验", false, ex.Message); }
+
+            Out("== K 单实例 / 中英互查 / 标签列宽 ==");
+            try
+            {
+                // ① 单实例：运行时验证 —— 拿锁、强制 GC 后再试（旧实现正是 GC 后失效）
+                bool first = Single.IsFirstInstance();
+                Ok("① 本进程能拿到单实例锁", first, first ? "拿到 ✓" : "拿不到");
+                bool created2;
+                System.Threading.Mutex probe2 = new System.Threading.Mutex(true, "VarNamer.SingleInstance.v1", out created2);
+                probe2.Dispose();
+                Ok("① 第二个进程拿不到锁（不会开出第二个窗口）", !created2, created2 ? "能拿到 ✗ 单实例失效" : "拿不到 ✓");
+                GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();
+                bool created3;
+                System.Threading.Mutex probe3 = new System.Threading.Mutex(true, "VarNamer.SingleInstance.v1", out created3);
+                probe3.Dispose();
+                Ok("① 强制 GC 后锁仍被持有（旧实现就是在这一步失效的）", !created3, created3 ? "GC 后锁丢了 ✗" : "仍持有 ✓");
+
+                // ② 悬浮窗：英文反查中文
+                AppState s9 = new AppState();
+                s9.Cfg.GuideShown = true; s9.Cfg.FloatGroup = 0; s9.Cfg.Save();
+                FloatForm fz = new FloatForm(s9);
+                fz.StartPosition = FormStartPosition.Manual;
+                fz.Location = new Point(-4000, -4000);
+                fz.Show(); Pump(350);
+                fz.SetInput("成绩"); Pump(300);
+                int hCn = fz.Height; int rowsCn = Rows(fz);
+                fz.SetInput("score"); Pump(350);
+                int hEn = fz.Height; int rowsEn = Rows(fz);
+                string revVal = "", revTag = "";
+                foreach (Control ctl in All(fz))
+                {
+                    ResultRow rr = ctl as ResultRow;
+                    if (rr != null && rr.Visible && rr.TagText == "中文") { revTag = rr.TagText; revVal = rr.Value; }
+                }
+                Ok("② 悬浮窗输入英文只显示「中文」一行", revTag == "中文" && revVal.Length > 0 && rowsEn == 1,
+                    "可见行 " + rowsEn + " · 标签「" + revTag + "」值=" + revVal);
+                Ok("② 英文态高度变小（风格行已隐藏）", hEn < hCn, rowsCn + " 行/" + hCn + "px → " + rowsEn + " 行/" + hEn + "px");
+                // 单个英文词只要一个最准的中文；多词短语给组合结果
+                fz.SetInput("user name"); Pump(350);
+                string v1 = "", v2 = "", v3 = "";
+                foreach (Control ctl in All(fz)) { ResultRow rr = ctl as ResultRow; if (rr != null && rr.Visible) v1 = rr.Value; }
+                fz.SetInput("user_name"); Pump(300);
+                foreach (Control ctl in All(fz)) { ResultRow rr = ctl as ResultRow; if (rr != null && rr.Visible) v2 = rr.Value; }
+                fz.SetInput("userName"); Pump(300);
+                foreach (Control ctl in All(fz)) { ResultRow rr = ctl as ResultRow; if (rr != null && rr.Visible) v3 = rr.Value; }
+                Ok("② 整词命中：user name / user_name / userName 都得到唯一结果", v1 == "用户名" && v2 == "用户名" && v3 == "用户名",
+                    v1 + " / " + v2 + " / " + v3);
+                fz.SetInput("user name id"); Pump(350);
+                string v4 = "";
+                foreach (Control ctl in All(fz)) { ResultRow rr = ctl as ResultRow; if (rr != null && rr.Visible) v4 = rr.Value; }
+                Ok("② 多词无整词命中时逐词组合", v4.IndexOf("+") > 0, "user name id → " + v4);
+                fz.SetInput("name"); Pump(300);
+                string v5 = "";
+                foreach (Control ctl in All(fz)) { ResultRow rr = ctl as ResultRow; if (rr != null && rr.Visible) v5 = rr.Value; }
+                Ok("② 单词只要一个最准结果", v5 == "名字", "name → " + v5);
+                // 中文值必须用中文字体（Consolas 没有汉字）
+                bool cjkFont = false;
+                foreach (Control ctl in All(fz))
+                {
+                    ResultRow rr = ctl as ResultRow;
+                    if (rr == null || !rr.Visible) continue;
+                    foreach (Control gc in rr.Controls) { Label lb = gc as Label; if (lb != null && lb.Text == v5) cjkFont = lb.Font.Name.IndexOf("YaHei") >= 0; }
+                }
+                Ok("② 中文值使用中文字体（不再是 Consolas）", cjkFont, cjkFont ? "微软雅黑 ✓" : "仍是非中文字体");
+                fz.SetInput("成绩"); Pump(250);
+                bool revHidden = true;
+                foreach (Control ctl in All(fz))
+                {
+                    ResultRow rr = ctl as ResultRow;
+                    if (rr != null && rr.TagText == "中文" && rr.Visible) revHidden = false;
+                }
+                Ok("② 输入中文时不显示反查行", revHidden, "已隐藏=" + revHidden);
+
+                // ③ 标签列宽度：按最长标签自适应，文字要能整行显示
+                fz.SetInput("成绩"); Pump(300);
+                TabStrip gstrip = (TabStrip)Fld(fz, "groupStrip");
+                gstrip.SelectedIndex = 2;      // 简短组：标签是 camelCase / snake_case
+                Pump(400);
+                int needW = 0, gotW = 0; string longTag = "";
+                foreach (Control ctl in All(fz))
+                {
+                    ResultRow rr = ctl as ResultRow;
+                    if (rr == null || !rr.Visible) continue;
+                    int tw = TextRenderer.MeasureText(rr.TagText, Theme.FontSmall).Width;
+                    if (tw > needW) { needW = tw; longTag = rr.TagText; }
+                    gotW = rr.TagWidth;
+                }
+                Ok("③ 标签列宽 ≥ 最长标签实际宽度（不再截断）", gotW >= needW, "最长「" + longTag + "」需 " + needW + "px，实际 " + gotW + "px");
+                bool noParen = true; string parenTag = "";
+                foreach (Control ctl in All(fz))
+                {
+                    ResultRow rr = ctl as ResultRow;
+                    if (rr == null || !rr.Visible) continue;
+                    if (rr.TagText.IndexOf('(') >= 0 || rr.TagText.IndexOf('（') >= 0) { noParen = false; parenTag = rr.TagText; }
+                }
+                Ok("③ 标签已去掉「每词≤N / 每段≤N」括号", noParen, noParen ? "无括号 ✓" : ("仍带括号：" + parenTag));
+                int ovK = Scan(fz, fz); overlaps += ovK;
+                Ok("③ 反查行 + 宽标签后无重叠/裁切", ovK == 0 && ClipIssues(fz) == 0, "重叠 " + ovK + " 裁切 " + ClipIssues(fz));
+                fz.Dispose();
+
+                // ④ 主界面：英文反查中文行
+                AppState s10 = new AppState();
+                s10.Cfg.GuideShown = true; s10.Cfg.Save();
+                MainForm mz = new MainForm(s10, null, "");
+                mz.StartPosition = FormStartPosition.Manual;
+                mz.Location = new Point(-4000, -4000);
+                mz.Show(); Pump(350);
+                DarkTextBox mIn = null;
+                foreach (Control ctl in All(mz)) { DarkTextBox d = ctl as DarkTextBox; if (d != null) { mIn = d; break; } }
+                mIn.Text = "score"; Pump(300);
+                Label rev = (Label)Fld(mz, "lblReverse");
+                Ok("④ 主界面输入英文显示中文（唯一最准结果）", rev != null && rev.Visible && rev.Text.IndexOf("score → 分数") > 0, rev == null ? "无控件" : rev.Text);
+                mIn.Text = "数学成绩"; Pump(300);
+                Ok("④ 输入中文时该行隐藏", rev != null && !rev.Visible, "可见=" + (rev != null && rev.Visible));
+                mz.Close(); mz.Dispose();
+            }
+            catch (Exception ex) { Ok("本轮校验", false, ex.Message); }
+
             Out("");
             Out("== 小结：通过 " + pass + "，失败 " + fail + "，布局重叠 " + overlaps + " 处 ==");
             Flush();
@@ -376,6 +633,15 @@ namespace VarNamer
             MethodInfo mi = o.GetType().GetMethod(m, BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Public);
             if (mi != null) mi.Invoke(o, a);
         }
+        private static void SetFld(object o, string n, object v)
+        {
+            for (Type t = o.GetType(); t != null; t = t.BaseType)
+            {
+                FieldInfo fi = t.GetField(n, BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+                if (fi != null) { fi.SetValue(o, v); return; }
+            }
+        }
+
         private static object Fld(object o, string n)
         {
             for (Type t = o.GetType(); t != null; t = t.BaseType)

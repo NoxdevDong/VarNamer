@@ -13,7 +13,7 @@ $dataDir = Join-Path $outDir 'testdata'
 New-Item -ItemType Directory -Force -Path $outDir, $dataDir | Out-Null
 
 $srcList = @('Lexicon.cs','Namer.cs','Settings.cs','Util.cs','Theme.cs','Anim.cs','TabStrip.cs','ModernForm.cs',
-  'DarkCombo.cs','TrayApp.cs','MainForm.cs','FloatForm.cs','LexiconForm.cs','Guide.cs','LanguagePreset.cs',
+  'DarkCombo.cs','SingleInstance.cs','TrayApp.cs','MainForm.cs','FloatForm.cs','LexiconForm.cs','Guide.cs','LanguagePreset.cs',
   'Translation.cs','TextInfoForm.cs','TranslateHelp.cs','UnknownLog.cs','TranslateForm.cs','Hotkey.cs',
   'SettingsForm.cs','AutoDict.cs','ShotModel.cs','ShotGeom.cs','ShotForm.cs','ShotToolbar.cs') |
   ForEach-Object { Join-Path $root "src\$_" }

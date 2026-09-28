@@ -109,7 +109,12 @@ namespace VarNamer
                     {
                         string[] files = Directory.GetFiles(dirs[d].Path, "*.txt");
                         Array.Sort(files, StringComparer.OrdinalIgnoreCase);
-                        for (int i = 0; i < files.Length; i++) AddIfFile(res, seen, files[i]);
+                        for (int i = 0; i < files.Length; i++)
+                        {
+                            // 排除未收录词清单 / 说明文件等：它们不是词库
+                            if (!IsCandidateName(Path.GetFileName(files[i]))) continue;
+                            AddIfFile(res, seen, files[i]);
+                        }
                     }
                     catch (Exception) { }
                     continue;
@@ -126,6 +131,15 @@ namespace VarNamer
                 catch (Exception) { }
             }
             return res;
+        }
+
+        // dict 目录里放宽：任意 .txt 都收，但仍排除“明确不是词库”的文件名
+        private static bool IsCandidateName(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return false;
+            for (int i = 0; i < NeverImport.Length; i++)
+                if (string.Equals(name, NeverImport[i], StringComparison.OrdinalIgnoreCase)) return false;
+            return true;
         }
 
         private static bool NameHintsDict(string name)

@@ -5,7 +5,7 @@
 
 ![platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6)
 ![.NET](https://img.shields.io/badge/.NET%20Framework-4.x-512BD4)
-![version](https://img.shields.io/badge/version-5.0-2F6FED)
+![version](https://img.shields.io/badge/version-5.3-2F6FED)
 ![license](https://img.shields.io/badge/license-MIT-3DA639)
 ![dict](https://img.shields.io/badge/%E5%86%85%E7%BD%AE%E8%AF%8D%E5%BA%93-3948%20%E6%9D%A1-EF7A34)
 
@@ -29,8 +29,8 @@ VarNamer 让你输入中文，**实时得到 13 种命名风格**，点一下即
 
 | 版本 | 文件 | 说明 |
 |---|---|---|
-| 便携版 | `VarNamer-Portable-v5.0.zip` | 解压到任意目录（含 U 盘），双击 `VarNamer.exe` 即用；配置与词库都写在同目录，删文件夹即彻底卸载 |
-| 安装版 | `VarNamer-Setup-v5.0.exe` | 图形安装向导，装到当前用户目录（**不需要管理员权限**），带开始菜单/桌面快捷方式、开机自启、卸载项 |
+| 便携版 | `VarNamer-Portable-v5.3.zip` | 解压到任意目录（含 U 盘），双击 `VarNamer.exe` 即用；配置与词库都写在同目录，删文件夹即彻底卸载 |
+| 安装版 | `VarNamer-Setup-v5.3.exe` | 图形安装向导，装到当前用户目录（**不需要管理员权限**），带开始菜单/桌面快捷方式、开机自启、卸载项 |
 
 两个版本功能完全一致。系统要求：**Windows 10 / 11**（自带 .NET Framework 4.x），无需联网。
 
@@ -56,6 +56,7 @@ git clone https://github.com/NoxdevDong/VarNamer.git
 - **布尔前缀**：`是否激活` → `isActivate`
 - **集合复数**：`所有学生` → `students`
 - **类型前缀**：可选 `str` / `int` / `arr` … 一键加前缀
+- **中英双向**：输入中文出英文变量名；输入**纯英文**会额外给一行「中文」反查结果（score → 分数 / 总分 / 成绩…），悬浮窗与主界面都有
 - **中英混排**：`中文夹杂 abc 端口` → `chineseAbcPort`（英文原样保留）
 - **8 个语言预设**：通用 / Java / C# / Python / JavaScript / TypeScript / Go / C / C++ / SQL / CSS —— 选 Python 就给 `snake_case`，选 Java 就给 `camelCase`
 - **简洁模式**：新手只显示「变量名 / 类名 / 常量名」三行
@@ -82,7 +83,7 @@ git clone https://github.com/NoxdevDong/VarNamer.git
 - **自动检测导入**：把词库 `.txt` 丢进程序目录的 `dict` 文件夹（文件名随便起），程序启动自动并入；也可以在「词库管理 → 检测本地词库」手动触发
 - **只做加法**：与内置重复的条目不重复写入，你自己改过的定义永不被覆盖
 - 词库管理分三个标签页：**词条**（搜索 / 增删 / 双击载入）、**导入导出**（检测 / 导入导出 txt / 备份恢复 / 打开词库目录）、**在线翻译**（可选，默认关闭）
-- 未命中的字自动记入 `unknowns.txt`，随时可批量补进词库
+- 未命中的字自动记入 `dict\unknowns.txt`（和词库文件放在一起，方便顺手补齐；该目录不可写时自动改用用户数据目录）
 - 支持一键备份/恢复（`.vnbak`，含配置 + 词库）
 
 ### 界面与交互

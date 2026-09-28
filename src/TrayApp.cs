@@ -76,6 +76,9 @@ namespace VarNamer
         private HotkeyWindow hk;
         private AppState state;
         private string hotkeyInfo = "";
+        private System.Threading.EventWaitHandle showSignal;
+        private volatile bool showRequested;
+        private volatile bool quitting;
         private IntPtr prevWindow = IntPtr.Zero;
 
         // 复制后切回上一个窗口（新手最省事：不用手点回编辑器）
@@ -111,6 +114,38 @@ namespace VarNamer
             tray.Visible = true;
             tray.DoubleClick += delegate(object s, EventArgs e) { ShowMain(); };
             tray.ContextMenuStrip = BuildMenu();
+
+            // 单实例：第二个进程会给我们发信号，这里收到后把窗口弹出来（而不是再开一个）
+            showSignal = Single.OpenSignal();
+            if (showSignal != null)
+            {
+                System.Threading.Thread th = new System.Threading.Thread(delegate()
+                {
+                    while (!quitting)
+                    {
+                        try
+                        {
+                            if (!showSignal.WaitOne(500)) continue;
+                            if (quitting) break;
+                            showRequested = true;
+                        }
+                        catch (Exception) { break; }
+                    }
+                });
+                th.IsBackground = true;
+                th.Start();
+
+                System.Windows.Forms.Timer poll = new System.Windows.Forms.Timer();
+                poll.Interval = 250;
+                poll.Tick += delegate(object s, EventArgs e)
+                {
+                    if (!showRequested) return;
+                    showRequested = false;
+                    ShowFloater();
+                    if (main != null && !main.IsDisposed) ShowMain();
+                };
+                poll.Start();
+            }
 
             // 启动时自动检测 exe 同级目录的外置词库并导入
             string dictFile;
@@ -342,6 +377,13 @@ namespace VarNamer
         }
 
         public void Quit()
+        {
+            quitting = true;
+            try { if (showSignal != null) { showSignal.Set(); showSignal.Close(); showSignal = null; } } catch (Exception) { }
+            QuitCore();
+        }
+
+        private void QuitCore()
         {
             try
             {
