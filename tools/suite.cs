@@ -389,6 +389,19 @@ namespace VarNamer
                 Ok("挂件面板可见", chip != null && chip.Visible, "chip.Visible=" + (chip != null && chip.Visible));
                 int ovChip = Scan(ff, ff); overlaps += ovChip;
                 Ok("挂件态无重叠/裁切", ovChip == 0 && ClipIssues(ff) == 0, "重叠 " + ovChip + " 裁切 " + ClipIssues(ff));
+                Ok("挂件态取消置顶（不挡其它窗口）", !ff.TopMost, "TopMost=" + ff.TopMost);
+                int ex1 = GetWindowLong(ff.Handle, -20);
+                Ok("挂件态窗口样式无 WS_EX_TOPMOST 位", (ex1 & 0x8) == 0, "EXSTYLE=0x" + ex1.ToString("X2"));
+                ff.Expand(); Pump(350);
+                Ok("展开后恢复置顶偏好", ff.TopMost, "TopMost=" + ff.TopMost);
+                // 用户用「顶」关掉置顶后，收起再展开仍应保持不置顶
+                SetFld(ff, "pinned", false);
+                ff.TopMost = false;
+                ff.ToggleCollapsed(); Pump(300);
+                bool c1 = !ff.TopMost;
+                ff.Expand(); Pump(300);
+                Ok("「顶」偏好不会被挂件态覆盖", c1 && !ff.TopMost, "挂件态=" + c1 + " 展开后 TopMost=" + ff.TopMost);
+                SetFld(ff, "pinned", true); ff.TopMost = true;
 
                 MouseEventArgs me = new MouseEventArgs(MouseButtons.Left, 1, 0, 0, 0);
                 Inv(ff, "ChipDown", new object[] { chip, me });
@@ -759,6 +772,9 @@ namespace VarNamer
             }
             return bad;
         }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern int GetWindowLong(IntPtr h, int i);
 
         private static Rectangle R(Control c, Form f) { Point p = f.PointToClient(c.PointToScreen(new Point(0, 0))); return new Rectangle(p.X, p.Y, c.Width, c.Height); }
     }

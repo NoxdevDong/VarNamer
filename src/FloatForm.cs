@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
@@ -201,6 +202,11 @@ namespace VarNamer
         private int expandedW;           // 收起前的宽度（展开时还原）
         private Point chipDrag;          // 挂件拖动起点
         private bool chipMoved;
+        private bool pinned = true;      // 用户用「顶」按钮设定的置顶偏好（挂件态临时取消，展开时恢复）
+
+        [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
+        private const uint SWP_NOSIZE = 0x0001, SWP_NOMOVE = 0x0002, SWP_NOACTIVATE = 0x0010;
+        private static readonly IntPtr HWND_BOTTOM = (IntPtr)1;
         private int group;
         private static readonly string[] GroupNames = new string[] { "混合", "全称", "简短", "缩写" };
 
@@ -248,9 +254,10 @@ namespace VarNamer
             btnPin.ForeColor = Theme.Accent;
             btnPin.Click += delegate(object s, EventArgs e)
             {
-                TopMost = !TopMost;
-                btnPin.ForeColor = TopMost ? Theme.Accent : Theme.TextMuted;
-                lblTip.Text = TopMost ? "已锁定置顶" : "已取消置顶";
+                pinned = !pinned;                       // 记住偏好：收起成挂件再展开时恢复
+                TopMost = pinned;
+                btnPin.ForeColor = pinned ? Theme.Accent : Theme.TextMuted;
+                lblTip.Text = pinned ? "已锁定置顶" : "已取消置顶（挂件态始终不置顶）";
             };
             TitleButtons.Controls.Add(btnPin);
 
@@ -545,11 +552,13 @@ namespace VarNamer
                 state.Cfg.FloatVisible = true;
                 ApplyState();
                 ClampChipOnScreen();
+                ApplyWidgetZOrder();      // 挂件：不置顶 + 压到最底层，不挡任何窗口
                 Tween.FadeIn(this, state.Cfg.FloatOpacityIdle, Theme.DurMed);
             }
             else
             {
                 collapsed = false;
+                TopMost = pinned;         // 展开：恢复用户设定的置顶偏好
                 ApplyState();
                 int w = expandedW > 0 ? expandedW : state.Cfg.FloatW;
                 if (w > Width) Width = w;      // 还原展开宽度（高度由 ApplyState 定）
@@ -559,6 +568,18 @@ namespace VarNamer
                 SavePosition();
                 input.InnerBox.Focus();
             }
+        }
+
+        // 挂件态的窗口层级：取消置顶，并压到最底层（点它仍会正常激活/展开）
+        private void ApplyWidgetZOrder()
+        {
+            try
+            {
+                TopMost = false;
+                if (IsHandleCreated)
+                    SetWindowPos(Handle, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+            }
+            catch (Exception) { }
         }
 
         // 挂件要留在屏幕内（用当前坐标，不能用展开时记住的坐标）
@@ -891,7 +912,8 @@ namespace VarNamer
             Opacity = 0;                             // 淡入：0 → 默认半透明
             bright = false;
             Show();
-            TopMost = true;
+            TopMost = collapsed ? false : pinned;   // 挂件态不置顶
+            if (collapsed) ApplyWidgetZOrder();
             state.Cfg.FloatVisible = true;
             Tween.FadeIn(this, state.Cfg.FloatOpacityIdle, Theme.DurMed);
             if (VisibilityChanged != null) VisibilityChanged();
