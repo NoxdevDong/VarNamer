@@ -1,0 +1,661 @@
+using System;
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Windows.Forms;
+
+namespace VarNamer
+{
+    // 单行结果：风格标签 + 变量名；悬停时整行高亮、左侧亮条、右侧出现「复制」
+    public class ResultRow : Panel
+    {
+        private Label lblTag;
+        private Label lblVal;
+        private Label lblCopy;
+        private bool hover;
+        private bool isLast;
+        private double flash;      // 0..1，结果出现时的高亮闪现
+        public event EventHandler CopyRequested;
+
+        public ResultRow(string tag, bool last)
+        {
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint
+                | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+            BackColor = Theme.Surface;
+            isLast = last;
+            Height = FloatForm.RowH;
+            Dock = DockStyle.Top;
+            Margin = new Padding(0);
+            Cursor = Cursors.Hand;
+
+            lblTag = new Label();
+            lblTag.Text = tag;
+            lblTag.ForeColor = Theme.TextMuted;
+            lblTag.Font = Theme.FontSmall;
+            lblTag.AutoSize = false;
+            lblTag.TextAlign = ContentAlignment.MiddleLeft;
+            lblTag.BackColor = Color.Transparent;
+            lblTag.Cursor = Cursors.Hand;
+            Controls.Add(lblTag);
+
+            lblVal = new Label();
+            lblVal.ForeColor = Theme.TextPrimary;
+            lblVal.Font = Theme.FontMono;
+            lblVal.AutoSize = false;
+            lblVal.TextAlign = ContentAlignment.MiddleLeft;
+            lblVal.BackColor = Color.Transparent;
+            lblVal.AutoEllipsis = true;
+            lblVal.Cursor = Cursors.Hand;
+            Controls.Add(lblVal);
+
+            lblCopy = new Label();
+            lblCopy.Text = "复制";
+            lblCopy.ForeColor = Theme.Accent;
+            lblCopy.Font = Theme.FontSmall;
+            lblCopy.AutoSize = false;
+            lblCopy.TextAlign = ContentAlignment.MiddleRight;
+            lblCopy.BackColor = Color.Transparent;
+            lblCopy.Cursor = Cursors.Hand;
+            lblCopy.Visible = false;
+            Controls.Add(lblCopy);
+
+            lblTag.Click += Fire;
+            lblVal.Click += Fire;
+            lblCopy.Click += Fire;
+            Click += Fire;
+            lblTag.MouseEnter += HoverOn;
+            lblVal.MouseEnter += HoverOn;
+            lblCopy.MouseEnter += HoverOn;
+            MouseEnter += HoverOn;
+            lblTag.MouseLeave += HoverOff;
+            lblVal.MouseLeave += HoverOff;
+            lblCopy.MouseLeave += HoverOff;
+            MouseLeave += HoverOff;
+        }
+
+        public void SetTagText(string t)
+        {
+            if (lblTag != null) lblTag.Text = t == null ? "" : t;
+        }
+
+        // 结果出现时的逐行高亮（delayMs 错峰，形成“依次亮起”的动效）
+        public void PlayAppear(int delayMs)
+        {
+            Tween.RunDelayed(delayMs, Theme.DurSlow, delegate(double k)
+            {
+                if (IsDisposed) return;
+                flash = 1.0 - Curves.DecelerateMax(k);
+                Invalidate();
+                if (flash <= 0.01) flash = 0;
+            }, null);
+        }
+
+        public string Value
+        {
+            get { return lblVal.Text; }
+            set
+            {
+                lblVal.Text = value;
+                lblVal.Tag = value;
+                if (tip == null && lblVal != null) tip = new ToolTip();
+                if (tip != null) tip.SetToolTip(lblVal, value);
+            }
+        }
+
+        private ToolTip tip;
+
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+            if (lblTag == null) return;
+            lblTag.SetBounds(Theme.S(14), 0, Theme.S(64), Height);
+            lblCopy.SetBounds(Width - Theme.S(56), 0, Theme.S(44), Height);
+            lblVal.SetBounds(Theme.S(80), 0, Math.Max(Theme.S(10), Width - Theme.S(80) - Theme.S(58)), Height);
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            Theme.EraseBackground(this, e.Graphics);      // 自绘先擦底，避免 hover 残留重影
+            Graphics g = e.Graphics;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            if (hover || flash > 0.01)
+            {
+                Rectangle rr = new Rectangle(0, 0, Width, Height);
+                Color fill = hover ? Theme.RowHover : Theme.Surface;
+                if (flash > 0.01) fill = Anim.Lerp(fill, Theme.AccentSoft, flash * 0.95);
+                using (GraphicsPath p = Theme.RoundedRect(new Rectangle(rr.X, rr.Y, rr.Width - 1, rr.Height - 1), Theme.RadSm))
+                using (SolidBrush b = new SolidBrush(fill))
+                    g.FillPath(b, p);
+                if (hover)
+                    using (SolidBrush ab = new SolidBrush(Theme.Accent))
+                        g.FillRectangle(ab, Theme.S(3), Theme.S(7), Theme.S(3), Height - Theme.S(14));
+            }
+            if (!isLast)
+            {
+                using (Pen pen = new Pen(Theme.CardLine))
+                    g.DrawLine(pen, Theme.S(14), Height - 1, Width - Theme.S(14), Height - 1);
+            }
+            base.OnPaint(e);
+        }
+
+        private void Fire(object sender, EventArgs e)
+        {
+            if (CopyRequested != null) CopyRequested(this, EventArgs.Empty);
+        }
+
+        private void HoverOn(object sender, EventArgs e) { ApplyHover(true); }
+        private void HoverOff(object sender, EventArgs e) { ApplyHover(false); }
+
+        private void ApplyHover(bool on)
+        {
+            if (hover == on) return;
+            hover = on;
+            if (lblCopy != null) lblCopy.Visible = on && lblVal.Text.Length > 0;
+            Invalidate();
+        }
+    }
+
+    // 悬浮窗：空输入时只留输入框（不显示候选列表），输入内容后才展开 5 行结果
+    public class FloatForm : ModernForm
+    {
+        private AppState state;
+        private DarkTextBox input;
+        private Panel inputArea;
+        private CardPanel rowsHost;
+        private TableLayoutPanel rowsBox;
+        private Panel emptyPanel;
+        private Label lblEmptyTitle;
+        private Label lblEmptySub;
+        private Label lblTip;
+        private FlatButton btnPin;
+        private ResultRow[] rows;
+        private TabStrip groupStrip;
+        private int group;
+        private static readonly string[] GroupNames = new string[] { "混合", "全称", "简短", "缩写" };
+
+        private static readonly string[] RowTags = new string[] { "Pascal", "camel", "snake", "简短", "缩写" };
+
+        public static readonly int RowH = Theme.S(34);
+        private static readonly int InputH = Theme.S(58);
+        private static readonly int TipH = Theme.S(26);
+        private static readonly int EmptyH = Theme.S(78);
+        private static readonly int GroupBarH = Theme.S(28);
+        public static readonly int HeaderH = Theme.S(46);
+
+        private bool lastHasText = false;
+        private bool bright = false;          // true = 当前是全亮（活动）状态
+
+        public Action OpenMain;
+        public Action AfterCopy;
+        public Action VisibilityChanged;   // 显示/隐藏状态变化时通知托盘与主界面
+
+        public FloatForm(AppState st)
+        {
+            state = st;
+            Text = "VarNamer 悬浮窗";
+            ShowInTaskbar = false;
+            TopMost = true;
+            CornerRadius = 16;
+            LblSub.Text = "v" + AppVersion.Value + " · 悬浮窗";
+            Opacity = state.Cfg.FloatOpacityIdle;   // 初始半透明，点进来才全亮
+            bright = false;
+            BackColor = Theme.Bg;
+
+            TitleButtons.Width = Theme.S(132);
+            BtnMin.Text = "主";
+            BtnMin.Font = new Font("Microsoft YaHei UI", 8.5f);
+            BtnClose.Font = new Font("Microsoft YaHei UI", 9f);
+
+            btnPin = new FlatButton();
+            btnPin.Text = "顶";
+            btnPin.Font = new Font("Microsoft YaHei UI", 8.5f);
+            btnPin.Size = new Size(Theme.S(34), Theme.S(28));
+            btnPin.Radius = Theme.S(7);
+            btnPin.Margin = new Padding(Theme.S(4), 0, 0, 0);
+            btnPin.HoverOverride = Theme.AccentSoft;
+            btnPin.PressOverride = Theme.AccentDown;
+            btnPin.ForeColor = Theme.Accent;
+            btnPin.Click += delegate(object s, EventArgs e)
+            {
+                TopMost = !TopMost;
+                btnPin.ForeColor = TopMost ? Theme.Accent : Theme.TextMuted;
+                lblTip.Text = TopMost ? "已锁定置顶" : "已取消置顶";
+            };
+            TitleButtons.Controls.Add(btnPin);
+
+            // ---------- 输入区 ----------
+            inputArea = new Panel();
+            inputArea.Dock = DockStyle.Top;
+            inputArea.Height = InputH;
+            inputArea.BackColor = Theme.Bg;
+            inputArea.Padding = new Padding(Theme.S(12), Theme.S(8), Theme.S(12), Theme.S(8));
+
+            TableLayoutPanel inputRow = new TableLayoutPanel();
+            inputRow.Dock = DockStyle.Fill;
+            inputRow.BackColor = Theme.Bg;
+            inputRow.Margin = new Padding(0);
+            inputRow.ColumnCount = 2;
+            inputRow.RowCount = 1;
+            inputRow.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
+            inputRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+            inputRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, Theme.S(32)));
+
+            input = new DarkTextBox();
+            input.Dock = DockStyle.Fill;
+            input.Margin = new Padding(0, 0, Theme.S(8), 0);
+            input.InnerBox.Font = Theme.FontInput;
+            input.InnerBox.TextChanged += delegate(object s, EventArgs e) { Recalc(); };
+            input.InnerBox.GotFocus += delegate(object s, EventArgs e) { if (input.InnerBox.Capture || Control.MouseButtons != MouseButtons.None) Brighten(); };
+            input.InnerBox.MouseDown += delegate(object s, MouseEventArgs e) { Brighten(); };
+            input.InnerBox.KeyDown += delegate(object s, KeyEventArgs e)
+            {
+                Brighten();
+                if (e.KeyCode == Keys.Down)
+                {
+                    e.SuppressKeyPress = true;
+                    FocusRow(0);
+                    return;
+                }
+                if (e.KeyCode != Keys.Enter) return;
+                if (MainForm.IsImeComposing(input.InnerBox)) return;   // 输入法选字回车不算
+                e.SuppressKeyPress = true;
+                CopyFirst();
+            };
+            inputRow.Controls.Add(input, 0, 0);
+
+            FlatButton btnClear = new FlatButton();
+            btnClear.Text = "✕";
+            btnClear.Dock = DockStyle.Fill;
+            btnClear.Margin = new Padding(0, Theme.S(1), 0, Theme.S(1));
+            btnClear.Radius = Theme.S(6);
+            btnClear.Font = new Font("Segoe UI", 9f);
+            btnClear.HoverOverride = Color.FromArgb(120, 45, 45);
+            ToolTip ct = new ToolTip();
+            ct.SetToolTip(btnClear, "清空输入");
+            btnClear.Click += delegate(object s, EventArgs e)
+            {
+                input.Text = "";
+                input.InnerBox.Focus();
+                lblTip.Text = "已清空输入";
+                ApplyState();
+            };
+            inputRow.Controls.Add(btnClear, 1, 0);
+            inputArea.Controls.Add(inputRow);
+
+            // ---------- 空状态（只露输入框）----------
+            emptyPanel = new Panel();
+            emptyPanel.Dock = DockStyle.Fill;
+            emptyPanel.BackColor = Theme.Bg;
+            emptyPanel.Padding = new Padding(Theme.S(12), Theme.S(6), Theme.S(12), 0);
+
+            lblEmptyTitle = new Label();
+            lblEmptyTitle.Dock = DockStyle.Top;
+            lblEmptyTitle.Height = Theme.S(34);
+            lblEmptyTitle.TextAlign = ContentAlignment.MiddleCenter;
+            lblEmptyTitle.ForeColor = Theme.TextSecondary;
+            lblEmptyTitle.Font = Theme.FontBody;
+            lblEmptyTitle.BackColor = Theme.Bg;
+            lblEmptyTitle.Text = "输入中文，立即生成 5 种命名风格";
+            lblEmptySub = new Label();
+            lblEmptySub.Dock = DockStyle.Top;
+            lblEmptySub.Height = Theme.S(22);
+            lblEmptySub.TextAlign = ContentAlignment.MiddleCenter;
+            lblEmptySub.ForeColor = Theme.TextMuted;
+            lblEmptySub.Font = Theme.FontSmall;
+            lblEmptySub.BackColor = Theme.Bg;
+            lblEmptySub.Text = "回车复制第一行 · 点结果行复制 · Ctrl+滚轮调透明度 · Esc 隐藏";
+
+            // 注意：Dock=Top 的控件是“后加的排在上面”，这里倒序加：sub → title
+            emptyPanel.Controls.Add(lblEmptySub);
+            emptyPanel.Controls.Add(lblEmptyTitle);
+
+            // ---------- 结果区（有输入才显示）----------
+            rowsHost = new CardPanel();
+            rowsHost.Dock = DockStyle.Fill;
+            rowsHost.Title = "";
+            rowsHost.Hint = "";
+            rowsHost.Radius = Theme.S(12);
+            rowsHost.Padding = new Padding(Theme.S(8), Theme.S(8), Theme.S(8), Theme.S(8));
+            rowsHost.Margin = new Padding(Theme.S(12), 0, Theme.S(12), 0);
+
+            rowsBox = new TableLayoutPanel();
+            rowsBox.Dock = DockStyle.Fill;
+            rowsBox.BackColor = Theme.Surface;
+            rowsBox.ColumnCount = 1;
+            rowsBox.RowCount = RowTags.Length;
+            rows = new ResultRow[RowTags.Length];
+            for (int i = 0; i < RowTags.Length; i++)
+            {
+                rowsBox.RowStyles.Add(new RowStyle(SizeType.Absolute, RowH));
+                ResultRow rr = new ResultRow(RowTags[i], i == RowTags.Length - 1);
+                rr.CopyRequested += delegate(object s, EventArgs e) { CopyRow((ResultRow)s); };
+                rows[i] = rr;
+                rowsBox.Controls.Add(rr, 0, i);
+            }
+            rowsHost.Controls.Add(rowsBox);
+
+            groupStrip = new TabStrip();
+            groupStrip.Small = true;
+            groupStrip.Height = GroupBarH;
+            groupStrip.TabGap = Theme.S(16);
+            groupStrip.Indent = Theme.S(2);
+            groupStrip.Dock = DockStyle.Top;
+            groupStrip.BackColor = Theme.Bg;
+            groupStrip.Items = GroupNames;
+            groupStrip.SelectedIndexChanged += delegate(object s, EventArgs e)
+            {
+                group = groupStrip.SelectedIndex;
+                state.Cfg.FloatGroup = group;
+                state.Cfg.Save();
+                Recalc();
+            };
+
+            Panel rowsWrap = new Panel();
+            rowsWrap.Dock = DockStyle.Fill;
+            rowsWrap.BackColor = Theme.Bg;
+            rowsWrap.Padding = new Padding(Theme.S(12), 0, Theme.S(12), Theme.S(10));
+            rowsWrap.Controls.Add(rowsHost);
+            rowsWrap.Controls.Add(groupStrip);
+
+            lblTip = new Label();
+            lblTip.Dock = DockStyle.Bottom;
+            lblTip.Height = TipH;
+            lblTip.ForeColor = Theme.TextMuted;
+            lblTip.Font = Theme.FontSmall;
+            lblTip.TextAlign = ContentAlignment.MiddleLeft;
+            lblTip.Padding = new Padding(Theme.S(14), 0, 0, 0);
+            lblTip.BackColor = Theme.Bg;
+            lblTip.Text = "输入中文即可生成 · 点结果行复制";
+
+            // 加顺序：Dock 填充的控件后加的先占位，这里按 输入区 → 结果区 → 空状态 → 提示 排列
+            Content.Controls.Add(emptyPanel);
+            Content.Controls.Add(rowsWrap);
+            Content.Controls.Add(inputArea);
+            Content.Controls.Add(lblTip);
+
+            int w = state.Cfg.FloatW > 0 ? state.Cfg.FloatW : Theme.S(500);
+            Size = new Size(w, FullHeight());
+            MinimumSize = new Size(Theme.S(420), EmptyHeight());
+            Location = new Point(state.Cfg.FloatX, state.Cfg.FloatY);
+
+            KeyPreview = true;
+            KeyDown += delegate(object s, KeyEventArgs e)
+            {
+                if (e.KeyCode == Keys.Escape) HideFloat();
+            };
+            MouseWheel += OnWheel;
+            FormClosing += delegate(object s, FormClosingEventArgs e)
+            {
+                if (e.CloseReason == CloseReason.UserClosing) { e.Cancel = true; HideFloat(); }
+            };
+
+            AttachBrighten(this);            // 窗口内任意位置按下 → 全亮
+            group = state.Cfg.FloatGroup;
+            if (group < 0 || group > 3) group = 0;
+            SyncGroupTabs();
+            ApplyState();
+        }
+
+        private void SyncGroupTabs()
+        {
+            if (groupStrip != null && groupStrip.SelectedIndex != group) groupStrip.SelectedIndex = group;
+        }
+
+        private void AttachBrighten(Control c)
+        {
+            c.MouseDown += delegate(object s, MouseEventArgs e) { Brighten(); };
+            for (int i = 0; i < c.Controls.Count; i++) AttachBrighten(c.Controls[i]);
+        }
+
+        private int VisibleRowCount()
+        {
+            int n = 0;
+            for (int i = 0; i < rows.Length; i++) if (rows[i].Visible) n++;
+            return n;
+        }
+
+        private int FullHeight()
+        {
+            return HeaderH + InputH + GroupBarH + Theme.S(8) + rowsBox.Padding.Vertical
+                 + VisibleRowCount() * (RowH + 1) + Theme.S(10) + TipH;
+        }
+
+        private int EmptyHeight()
+        {
+            return HeaderH + InputH + EmptyH + TipH;
+        }
+
+        private bool HasAnyValue()
+        {
+            for (int i = 0; i < rows.Length; i++) if (!string.IsNullOrEmpty(rows[i].Value)) return true;
+            return false;
+        }
+
+        // 有可用结果 → 展开结果列表；空输入、或一个字都没认出来 → 收起，只留输入框
+        private void ApplyState()
+        {
+            bool typed = input.Text != null && input.Text.Trim().Length > 0;
+            bool has = typed && HasAnyValue();
+            if (lblEmptyTitle != null)
+                lblEmptyTitle.Text = !typed
+                    ? "输入中文，立即生成 5 种命名风格"
+                    : "没有识别到可用的词 · 可在主窗口「加词库」补词";
+            emptyPanel.Visible = !has;
+            rowsHost.Parent.Visible = has;
+            int target = has ? FullHeight() : EmptyHeight();
+            MinimumSize = new Size(Theme.S(420), has ? target : EmptyHeight());
+            if (Height != target)
+            {
+                int bottom = Location.Y + Height;
+                Height = target;
+                try
+                {
+                    Rectangle wa = Screen.FromPoint(new Point(Location.X, bottom)).WorkingArea;
+                    if (Location.Y + Height > wa.Bottom) Location = new Point(Location.X, Math.Max(wa.Top, wa.Bottom - Height));
+                }
+                catch (Exception) { }
+            }
+            if (has && !lastHasText)
+            {
+                lblTip.Text = "点结果行复制 · Ctrl+滚轮调透明度 · Esc 隐藏";
+                input.InnerBox.Focus();
+                for (int i = 0; i < rows.Length; i++) rows[i].PlayAppear(i * 35);   // 逐行错峰亮起
+            }
+            else if (typed && !has && !lastHasText)
+            {
+                lblTip.Text = "没有识别到可用的词（可在主窗口把新词加进词库）";
+            }
+            lastHasText = has;
+        }
+
+        protected override bool FadeOnShow { get { return false; } }   // 悬浮窗自己控制透明度
+
+        protected override void OnChromeClose() { HideFloat(); }
+        protected override void OnChromeMinimize() { if (OpenMain != null) OpenMain(); }
+
+        private void OnWheel(object sender, MouseEventArgs e)
+        {
+            if ((ModifierKeys & Keys.Control) != Keys.Control) return;
+            double step = e.Delta > 0 ? 0.04 : -0.04;
+            if (bright)
+            {
+                double o = state.Cfg.FloatOpacity + step;
+                if (o < 0.4) o = 0.4;
+                if (o > 1.0) o = 1.0;
+                state.Cfg.FloatOpacity = o;
+                Opacity = o;
+                lblTip.Text = "全亮不透明度 " + Math.Round(o * 100) + "%";
+            }
+            else
+            {
+                double o = state.Cfg.FloatOpacityIdle + step;
+                if (o < 0.25) o = 0.25;
+                if (o > 1.0) o = 1.0;
+                state.Cfg.FloatOpacityIdle = o;
+                Opacity = o;
+                lblTip.Text = "默认透明度 " + Math.Round(o * 100) + "%（点进来会全亮）";
+            }
+        }
+
+        // 用户碰了窗口（点击/输入）→ 取消半透明，全亮
+        private void Brighten()
+        {
+            if (bright) return;
+            bright = true;
+            Opacity = state.Cfg.FloatOpacity;
+        }
+
+        // 变回默认的半透明
+        private void Dim()
+        {
+            bright = false;
+            Opacity = state.Cfg.FloatOpacityIdle;
+        }
+
+        // 设置里改了“默认透明度”后即时生效
+        public void ApplyIdleOpacity()
+        {
+            if (!bright) Opacity = state.Cfg.FloatOpacityIdle;
+        }
+
+        private void CopyRow(ResultRow row)
+        {
+            string v = row.Value;
+            if (string.IsNullOrEmpty(v)) return;
+            if (Clip.SetText(v))
+            {
+                lblTip.Text = "已复制：" + v;
+                if (AfterCopy != null) AfterCopy();     // 复制后切回上一个窗口（可在主窗口里关掉）
+            }
+            else lblTip.Text = "复制失败，请重试";
+        }
+
+        private void CopyFirst()
+        {
+            for (int i = 0; i < rows.Length; i++)
+            {
+                if (!string.IsNullOrEmpty(rows[i].Value)) { CopyRow(rows[i]); return; }
+            }
+        }
+
+        private void FocusRow(int index)
+        {
+            if (index >= 0 && index < rows.Length) lblTip.Text = "第 " + (index + 1) + " 行：" + rows[index].Value;
+        }
+
+        public string CurrentInput() { return input.Text; }
+
+        public void SetInput(string text)
+        {
+            input.Text = text;
+            Brighten();                      // 通过热键带文字唤起 = 用户正在用，直接全亮
+            input.InnerBox.SelectionStart = input.Text.Length;
+            Recalc();
+        }
+
+        private void Recalc()
+        {
+            string typed = input.Text == null ? "" : input.Text.Trim();
+            bool has = typed.Length > 0;
+
+            if (!has)
+            {
+                // 输入为空：清空候选行，不展示占位条目
+                for (int i = 0; i < rows.Length; i++) rows[i].Value = "";
+                ApplyState();
+                return;
+            }
+
+            NameResult r = Namer.Create(input.Text, state.Lex, state.Opt);
+            state.Current = r;
+
+            // 风格组：0 混合（随语言预设）/ 1 全称 / 2 简短 / 3 缩写
+            string lang = state.Cfg.Language;
+            int[] src;
+            if (group == 1) src = new int[] { LanguagePreset.VariableRow(lang), LanguagePreset.ClassRow(lang), LanguagePreset.ConstantRow(lang), 4, 5 };
+            else if (group == 2) src = new int[] { 6, 7, 8 };
+            else if (group == 3) src = new int[] { 9, 10, 11, 12 };
+            else src = LanguagePreset.FloatRows(lang);
+
+            for (int i = 0; i < rows.Length; i++)
+            {
+                bool show = i < src.Length;
+                rows[i].Visible = show;
+                rowsBox.RowStyles[i].Height = show ? RowH : 0;
+                if (!show) { rows[i].Value = ""; continue; }
+                int idx = src[i];
+                rows[i].SetTagText(RowLabel(idx, r, lang));
+                rows[i].Value = (idx >= 0 && idx < r.Lines.Count) ? r.Lines[idx].Value : "";
+            }
+            ApplyState();
+
+            if (r.Unknowns.Count > 0)
+                lblTip.Text = "未识别：" + string.Join(" ", r.Unknowns.ToArray()) + "（主窗口可加词库）";
+            else if (r.BooleanDetected && !state.Opt.BooleanPrefix)
+                lblTip.Text = "『是否』已按设置忽略（布尔前缀关闭）";
+            else if (!lblTip.Text.StartsWith("已复制") && !lblTip.Text.StartsWith("透明度") && !lblTip.Text.StartsWith("已锁定") && !lblTip.Text.StartsWith("已取消"))
+                lblTip.Text = "点结果行复制 · Ctrl+滚轮调透明度 · Esc 隐藏";
+        }
+
+        // 行标签：变量/类/常量随语言预设，其余用该风格自身名字（去掉“全称/简短/缩写”前缀）
+        private static string RowLabel(int idx, NameResult r, string lang)
+        {
+            if (idx == LanguagePreset.VariableRow(lang)) return "变量";
+            if (idx == LanguagePreset.ClassRow(lang)) return "类";
+            if (idx == LanguagePreset.ConstantRow(lang)) return "常量";
+            if (idx < 0 || idx >= r.Lines.Count) return "";
+            string t = r.Lines[idx].Label;
+            int sp = t.IndexOf(' ');
+            return sp > 0 ? t.Substring(sp + 1) : t;
+        }
+
+        public void ShowFloat()
+        {
+            ClampToScreen();                 // 位置若落在屏幕外（换显示器/分辨率变化），拉回可见区域
+            Opacity = 0;                             // 淡入：0 → 默认半透明
+            bright = false;
+            Show();
+            TopMost = true;
+            state.Cfg.FloatVisible = true;
+            Tween.FadeIn(this, state.Cfg.FloatOpacityIdle, Theme.DurMed);
+            if (VisibilityChanged != null) VisibilityChanged();
+        }
+
+        // 把窗口位置限制在当前显示器工作区内，避免“窗口不见了”
+        public void ClampToScreen()
+        {
+            try
+            {
+                Rectangle wa = Screen.FromPoint(new Point(state.Cfg.FloatX, state.Cfg.FloatY)).WorkingArea;
+                int x = Math.Max(wa.Left, Math.Min(state.Cfg.FloatX, wa.Right - Width));
+                int y = Math.Max(wa.Top, Math.Min(state.Cfg.FloatY, wa.Bottom - Height));
+                state.Cfg.FloatX = x;
+                state.Cfg.FloatY = y;
+                Location = new Point(x, y);
+            }
+            catch (Exception) { }
+        }
+
+        public void HideFloat()
+        {
+            SavePosition();
+            Hide();
+            state.Cfg.FloatVisible = false;
+            if (VisibilityChanged != null) VisibilityChanged();
+        }
+
+        public void SavePosition()
+        {
+            state.Cfg.FloatX = Location.X;
+            state.Cfg.FloatY = Location.Y;
+            state.Cfg.FloatW = Width;
+            state.Cfg.FloatH = Height;
+        }
+
+        protected override void OnDeactivate(EventArgs e)
+        {
+            base.OnDeactivate(e);
+            SavePosition();
+            Dim();                           // 点到别的地方 → 恢复半透明
+        }
+    }
+}
