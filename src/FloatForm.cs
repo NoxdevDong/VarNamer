@@ -203,6 +203,7 @@ namespace VarNamer
         private Point chipDrag;          // 挂件拖动起点
         private bool chipMoved;
         private bool pinned = true;      // 用户用「顶」按钮设定的置顶偏好（挂件态临时取消，展开时恢复）
+        private Point expandedClamped;   // 展开并钳制后的位置（用来判断之后有没有被人拖过）
 
         [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
         private const uint SWP_NOSIZE = 0x0001, SWP_NOMOVE = 0x0002, SWP_NOACTIVATE = 0x0010;
@@ -497,6 +498,7 @@ namespace VarNamer
             };
 
             AttachBrighten(this);            // 窗口内任意位置按下 → 全亮
+            expandedClamped = Location;
             group = state.Cfg.FloatGroup;
             if (group < 0 || group > 3) group = 0;
             SyncGroupTabs();
@@ -547,11 +549,23 @@ namespace VarNamer
             if (on)
             {
                 expandedW = Width;        // 记住展开时的宽度
-                SavePosition();           // 同时记住位置
+                SavePosition();           // 记住展开态位置与宽度
+                // 挂件位置独立保存：只有“第一次收起”或“展开后被拖动过”才重新取当前坐标，
+                // 否则沿用上次挂件位置 —— 这样靠右屏幕反复收放也不会一路往左漂
+                bool movedSinceExpand = (Location != expandedClamped);
+                if (state.Cfg.FloatWidgetX == int.MinValue || movedSinceExpand)
+                {
+                    state.Cfg.FloatWidgetX = Location.X;
+                    state.Cfg.FloatWidgetY = Location.Y;
+                }
                 collapsed = true;
                 state.Cfg.FloatVisible = true;
                 ApplyState();
+                Location = new Point(state.Cfg.FloatWidgetX, state.Cfg.FloatWidgetY);   // 回到挂件自己的位置
                 ClampChipOnScreen();
+                state.Cfg.FloatWidgetX = Location.X;      // 钳制结果写回，保证挂件始终在屏幕内
+                state.Cfg.FloatWidgetY = Location.Y;
+                state.Cfg.Save();
                 ApplyWidgetZOrder();      // 挂件：不置顶 + 压到最底层，不挡任何窗口
                 Tween.FadeIn(this, state.Cfg.FloatOpacityIdle, Theme.DurMed);
             }
@@ -562,10 +576,10 @@ namespace VarNamer
                 ApplyState();
                 int w = expandedW > 0 ? expandedW : state.Cfg.FloatW;
                 if (w > Width) Width = w;      // 还原展开宽度（高度由 ApplyState 定）
-                // 关键：按“当前坐标”钳制并写回，而不是读回收起前记住的旧坐标
-                // （否则把挂件拖到别处后展开会跳回原点）
+                // 按“当前坐标”钳制：窗口变宽后靠右会左移让出屏幕，这是必须的
                 ClampChipOnScreen();
-                SavePosition();
+                expandedClamped = Location;    // 记下钳制后的位置，下次收起时用来判断是否被人拖过
+                SavePosition();                // 只更新展开态位置，不动挂件位置
                 input.InnerBox.Focus();
             }
         }
@@ -611,7 +625,11 @@ namespace VarNamer
             if (!chipMoved && Math.Abs(dx) + Math.Abs(dy) < 4) return;   // 抖动阈值
             chipMoved = true;
             chipDrag = now;
-            Location = new Point(Location.X + dx, Location.Y + dy);
+            // 拖动时限制在屏幕工作区内，别把挂件拖到看不见的地方
+            Rectangle wa = Screen.FromPoint(new Point(Location.X + dx, Location.Y + dy)).WorkingArea;
+            int nx = Math.Max(wa.Left, Math.Min(Location.X + dx, wa.Right - Width));
+            int ny = Math.Max(wa.Top, Math.Min(Location.Y + dy, wa.Bottom - Height));
+            Location = new Point(nx, ny);
         }
 
         private void ChipUp(object sender, MouseEventArgs e)
@@ -623,6 +641,9 @@ namespace VarNamer
             else
             {
                 SavePosition();              // 挂件拖到哪就记到哪（挂件态不会覆盖展开宽度）
+                state.Cfg.FloatWidgetX = Location.X;
+                state.Cfg.FloatWidgetY = Location.Y;
+                state.Cfg.Save();
                 Dim();                       // 拖完回到半透明
             }
         }

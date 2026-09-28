@@ -2,6 +2,30 @@
 
 本文件记录每个版本**修了什么、为什么**（根因优先，方便回溯）。
 
+## v5.7
+
+- **改**：全库做了一遍**编程语义校对** —— 同一个中文，取程序员实际会用的那个英文
+  - 修正 65 条被通用词典带偏的键：`输入: import → input`、`输出: export → output`、`异常: abnormal → exception`、`错误: erroneous → error`、`日志: journal → log`、`保存: keep → save`、`粘贴: stick → paste`、`撤销: revoked → undo`、`协议: agreement → protocol`、`框架: frame → framework`、`构造: construction → constructor`、`堆: pile → heap`、`行: line → row`、`校验/认证/鉴权`、`枚举: enumeration → enum`、`分页: pagination → page`…
+  - 新增 196 条编程与系统术语（原库缺失）：`布尔=bool`、`浮点=float`、`布尔`、`快捷键=shortcut`、`断点=breakpoint`、`堆栈=stackTrace`、`消息队列=messageQueue`、`白名单/黑名单`、`脱敏=desensitize`、`幂等性=idempotency`、`异步=async`、`协程=coroutine`、`乐观锁/悲观锁`、`分库分表=sharding`、`灰度=gray`、`限流/熔断/降级`、`时间戳=timestamp`、`正则=regex`、`转义=escape`、`驼峰=camelCase`、`内存泄漏=memoryLeak`、`闭包=closure`、`动态规划=dynamicProgramming`、`崩溃=crash`、`释放=release`、`广播=broadcast`、`待支付=unpaid`、`是否删除=isDeleted`、`死信队列=deadLetterQueue`、`兜底=fallback` 等
+  - 校对方式：以 454 条编程基准项（语言/数据结构/并发/网络/数据库/电商/UI/工程流程）逐条比对现状，修正表由人工确认，非自动替换
+- **查**：全库 11,794 条跑了一次「配对是否落在该英文词的主词性释义行」扫描，抽样复核无系统性错配；剩余 8 条为同义写法（`失败=fail`、`延迟=delay`、`链接=link`、`并发=concurrent` 等，编程中同样常用），按原样保留
+- 内置可用词条 11,643 → **11,839**（含停用词共 11,875 条）；回归 `build.ps1` PASS + `tools\check.ps1` 57 项全过
+
+## v5.6
+
+- **加**：内置词库从 4004 条扩到 **11643 条**（可编辑词库同步 11643 条）—— 覆盖初高中/四六级/考研/托福/SAT 考纲词汇与 COCA 高频常用词
+  - **数据源**：`ECDICT`（MIT，含 COCA/BNC 词频、Collins 星级、牛津 3000、考纲 tag）+ `KyleBing/english-vocabulary`（54,356 条考纲中英对照，按 初中→SAT 分级）
+  - **选义规则**（避免"常见词配罕见义"）：按词性分组打分取**主词性组**，同组内取**最短义项**；两个来源都有该词时优先一致义项
+  - **过滤规则**：剔除 200 个功能词（a/the/of/not/more… 这些字不适合当变量名）、专有地名/人名词条、屈折变体（children/killer 归到原型）、敏感词；中文键限 1–4 字（单字只取初中/高中段）、不含标点、不超 24 字
+  - **人工义项修正表**：约 230 个高频多义词（give/state/word/point/type/file/handle…）逐条指定首选释义，防止词典排版顺序把罕见义项排到首位
+- **改**：内置词库与 `dict\VarNamer-Dict-CN-EN.txt` 按拼音重排，词库管理里的"内置 N 条"自动反映新数量
+- 回归：`build.ps1` 引擎自检 PASS，`tools\check.ps1` 57 项全过
+
+## v5.5
+
+- **修**：挂件放在屏幕右侧时，反复“收起 → 展开”会一路往左漂移 —— 展开时窗口变宽必须左移让出屏幕，而这个左移后的位置被当成了下次收起的位置。现在**挂件位置独立保存**（`floatwx`/`floatwy`），只有挂件被本人拖动过才会更新；实测 `1898 → 展开左移 1588 → 再收起回到 1898`，连续三次收放都不漂
+- **修**：拖动挂件时限制在屏幕工作区内，不会把它拖到看不见的地方
+
 ## v5.4
 
 - **改**：悬浮窗收成桌面挂件后**不再置顶，而是压到窗口最底层**（`TopMost=false` + `SetWindowPos(HWND_BOTTOM)`），这样它不会挡住任何正在用的窗口

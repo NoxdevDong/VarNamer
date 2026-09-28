@@ -16,6 +16,8 @@ namespace VarNamer
         public double FloatOpacity = 1.0;        // 活动（点进来/正在输入）时的不透明度
         public double FloatOpacityIdle = 0.6;    // 默认（未激活）时的半透明程度
         public int FloatGroup = 0;               // 悬浮窗风格组：0 混合 / 1 全称 / 2 简短 / 3 缩写
+        public int FloatWidgetX = int.MinValue;  // 桌面挂件位置（与展开态分开记，避免收放时漂移）
+        public int FloatWidgetY = int.MinValue;
         public bool FloatVisible = true;
         public string Hotkey = "Ctrl+Alt+V";
         // 在线翻译（可选）
@@ -124,6 +126,8 @@ namespace VarNamer
                         case "floatopacity": c.FloatOpacity = ToDouble(v, 1.0); break;
             case "floatidle": c.FloatOpacityIdle = ToDouble(v, 0.6); break;
             case "floatgroup": c.FloatGroup = (int)ToDouble(v, 0); break;
+            case "floatwx": c.FloatWidgetX = (int)ToDouble(v, int.MinValue); break;
+            case "floatwy": c.FloatWidgetY = (int)ToDouble(v, int.MinValue); break;
                         case "floatshow": c.FloatVisible = v != "0"; break;
                         case "hotkey": c.Hotkey = v; break;
                         case "translate": c.TranslateEnabled = v != "0"; break;
@@ -177,6 +181,8 @@ namespace VarNamer
                 sb.AppendLine("floatopacity=" + FloatOpacity.ToString(CultureInfo.InvariantCulture));
             sb.AppendLine("floatidle=" + FloatOpacityIdle.ToString(CultureInfo.InvariantCulture));
             sb.AppendLine("floatgroup=" + FloatGroup.ToString(CultureInfo.InvariantCulture));
+            sb.AppendLine("floatwx=" + FloatWidgetX.ToString(CultureInfo.InvariantCulture));
+            sb.AppendLine("floatwy=" + FloatWidgetY.ToString(CultureInfo.InvariantCulture));
                 sb.AppendLine("floatshow=" + (FloatVisible ? "1" : "0"));
                 sb.AppendLine("hotkey=" + Hotkey);
                 sb.AppendLine("translate=" + (TranslateEnabled ? "1" : "0"));

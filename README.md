@@ -5,13 +5,25 @@
 
 ![platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6)
 ![.NET](https://img.shields.io/badge/.NET%20Framework-4.x-512BD4)
-![version](https://img.shields.io/badge/version-5.4-2F6FED)
+![version](https://img.shields.io/badge/version-5.7-2F6FED)
 ![license](https://img.shields.io/badge/license-MIT-3DA639)
-![dict](https://img.shields.io/badge/%E5%86%85%E7%BD%AE%E8%AF%8D%E5%BA%93-3948%20%E6%9D%A1-EF7A34)
+![dict](https://img.shields.io/badge/%E5%86%85%E7%BD%AE%E8%AF%8D%E5%BA%93-11839%20%E6%9D%A1-EF7A34)
 
 ![主界面](docs/screenshots/01-主界面.png)
 
 ---
+
+## 词库来源
+
+内置词库（11839 条）基于两份开源数据筛选整理：
+
+| 数据源 | 许可 | 用到的部分 |
+|---|---|---|
+| [ECDICT](https://github.com/skywind3000/ECDICT) | MIT | 释义、COCA/BNC 词频、Collins 星级、牛津 3000、考纲 tag |
+| [KyleBing/english-vocabulary](https://github.com/KyleBing/english-vocabulary) | MIT | 54,356 条考纲中英对照（初中/高中/四级/六级/考研/托福/SAT） |
+
+筛选规则：取主词性组的义项、剔除功能词与专有名词、按词频与考纲等级排序，并对高频多义词做了人工义项修正。
+生成脚本与中间数据不在仓库内，仓库里只放成品词库（`data/lexicon.txt` 与 `dict/VarNamer-Dict-CN-EN.txt`）。
 
 ## 这是什么
 
@@ -19,7 +31,7 @@
 VarNamer 让你输入中文，**实时得到 13 种命名风格**，点一下即可复制，不用再切浏览器查词。
 
 - 一个 exe，双击就能用，不写注册表、不装运行库
-- 内置 3948 条中英词库（IT / 数据 / 网络 / 业务 / 金融 / 教育 / 医疗 …）
+- 内置 11839 条中英词库（IT / 数据 / 网络 / 业务 / 金融 / 教育 / 医疗 …）
 - 带一个全局热键悬浮窗：在编辑器里按一下就能取名，复制完自动切回编辑器
 - 附送截图标注（微信风格：矩形 / 箭头 / 画笔 / 高亮 / 马赛克 / 文字 / 钉在桌面）
 
@@ -29,8 +41,8 @@ VarNamer 让你输入中文，**实时得到 13 种命名风格**，点一下即
 
 | 版本 | 文件 | 说明 |
 |---|---|---|
-| 便携版 | `VarNamer-Portable-v5.4.zip` | 解压到任意目录（含 U 盘），双击 `VarNamer.exe` 即用；配置与词库都写在同目录，删文件夹即彻底卸载 |
-| 安装版 | `VarNamer-Setup-v5.4.exe` | 图形安装向导，装到当前用户目录（**不需要管理员权限**），带开始菜单/桌面快捷方式、开机自启、卸载项 |
+| 便携版 | `VarNamer-Portable-v5.7.zip` | 解压到任意目录（含 U 盘），双击 `VarNamer.exe` 即用；配置与词库都写在同目录，删文件夹即彻底卸载 |
+| 安装版 | `VarNamer-Setup-v5.7.exe` | 图形安装向导，装到当前用户目录（**不需要管理员权限**），带开始菜单/桌面快捷方式、开机自启、卸载项 |
 
 两个版本功能完全一致。系统要求：**Windows 10 / 11**（自带 .NET Framework 4.x），无需联网。
 
@@ -79,7 +91,7 @@ git clone https://github.com/NoxdevDong/VarNamer.git
 
 ### 词库
 
-- **内置 3948 条**，编译期内嵌在 exe 里，打开就能用，**不需要任何导入操作**
+- **内置 11839 条**，编译期内嵌在 exe 里，打开就能用，**不需要任何导入操作**
 - **自动检测导入**：把词库 `.txt` 丢进程序目录的 `dict` 文件夹（文件名随便起），程序启动自动并入；也可以在「词库管理 → 检测本地词库」手动触发
 - **只做加法**：与内置重复的条目不重复写入，你自己改过的定义永不被覆盖
 - 词库管理分三个标签页：**词条**（搜索 / 增删 / 双击载入）、**导入导出**（检测 / 导入导出 txt / 备份恢复 / 打开词库目录）、**在线翻译**（可选，默认关闭）

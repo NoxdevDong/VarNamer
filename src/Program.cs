@@ -8,7 +8,7 @@ namespace VarNamer
 {
     internal static class AppVersion
     {
-        public const string Value = "5.4";
+        public const string Value = "5.7";
     }
 
     internal static class Program

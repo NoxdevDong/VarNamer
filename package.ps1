@@ -5,7 +5,7 @@ $ErrorActionPreference = 'Stop'
 
 $root = $PSScriptRoot
 $out  = Split-Path $root -Parent
-$ver  = '5.4'
+$ver  = '5.7'
 $csc  = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
 if (-not (Test-Path $csc)) { $csc = "$env:WINDIR\Microsoft.NET\Framework\v4.0.30319\csc.exe" }
 if (-not (Test-Path $csc)) { throw "未找到 csc.exe，需要 .NET Framework 4.x" }
