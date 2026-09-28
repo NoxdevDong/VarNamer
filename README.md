@@ -5,7 +5,7 @@
 
 ![platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6)
 ![.NET](https://img.shields.io/badge/.NET%20Framework-4.x-512BD4)
-![version](https://img.shields.io/badge/version-4.9-2F6FED)
+![version](https://img.shields.io/badge/version-5.0-2F6FED)
 ![license](https://img.shields.io/badge/license-MIT-3DA639)
 ![dict](https://img.shields.io/badge/%E5%86%85%E7%BD%AE%E8%AF%8D%E5%BA%93-3948%20%E6%9D%A1-EF7A34)
 
@@ -29,8 +29,8 @@ VarNamer 让你输入中文，**实时得到 13 种命名风格**，点一下即
 
 | 版本 | 文件 | 说明 |
 |---|---|---|
-| 便携版 | `VarNamer-Portable-v4.9.zip` | 解压到任意目录（含 U 盘），双击 `VarNamer.exe` 即用；配置与词库都写在同目录，删文件夹即彻底卸载 |
-| 安装版 | `VarNamer-Setup-v4.9.exe` | 图形安装向导，装到当前用户目录（**不需要管理员权限**），带开始菜单/桌面快捷方式、开机自启、卸载项 |
+| 便携版 | `VarNamer-Portable-v5.0.zip` | 解压到任意目录（含 U 盘），双击 `VarNamer.exe` 即用；配置与词库都写在同目录，删文件夹即彻底卸载 |
+| 安装版 | `VarNamer-Setup-v5.0.exe` | 图形安装向导，装到当前用户目录（**不需要管理员权限**），带开始菜单/桌面快捷方式、开机自启、卸载项 |
 
 两个版本功能完全一致。系统要求：**Windows 10 / 11**（自带 .NET Framework 4.x），无需联网。
 

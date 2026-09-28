@@ -169,6 +169,13 @@ namespace VarNamer
         private FlatButton btnPin;
         private ResultRow[] rows;
         private TabStrip groupStrip;
+        private FlatButton btnCollapse;
+        private Panel chipPanel;
+        private Panel rowsWrap;
+        private bool collapsed;          // 收起为桌面挂件
+        private int expandedW;           // 收起前的宽度（展开时还原）
+        private Point chipDrag;          // 挂件拖动起点
+        private bool chipMoved;
         private int group;
         private static readonly string[] GroupNames = new string[] { "混合", "全称", "简短", "缩写" };
 
@@ -200,7 +207,7 @@ namespace VarNamer
             bright = false;
             BackColor = Theme.Bg;
 
-            TitleButtons.Width = Theme.S(132);
+            TitleButtons.Width = Theme.S(170);   // 主 / 顶 / 缩 / ✕
             BtnMin.Text = "主";
             BtnMin.Font = new Font("Microsoft YaHei UI", 8.5f);
             BtnClose.Font = new Font("Microsoft YaHei UI", 9f);
@@ -221,6 +228,20 @@ namespace VarNamer
                 lblTip.Text = TopMost ? "已锁定置顶" : "已取消置顶";
             };
             TitleButtons.Controls.Add(btnPin);
+
+            btnCollapse = new FlatButton();
+            btnCollapse.Text = "缩";
+            btnCollapse.Font = new Font("Microsoft YaHei UI", 8.5f);
+            btnCollapse.Size = new Size(Theme.S(34), Theme.S(28));
+            btnCollapse.Radius = Theme.S(7);
+            btnCollapse.Margin = new Padding(Theme.S(4), 0, 0, 0);
+            btnCollapse.HoverOverride = Theme.AccentSoft;
+            btnCollapse.PressOverride = Theme.AccentDown;
+            btnCollapse.ForeColor = Theme.TextSecondary;
+            ToolTip ct2 = new ToolTip();
+            ct2.SetToolTip(btnCollapse, "缩小成桌面挂件（不占地方，点挂件展开）");
+            btnCollapse.Click += delegate(object s, EventArgs e) { ToggleCollapsed(); };
+            TitleButtons.Controls.Add(btnCollapse);
 
             // ---------- 输入区 ----------
             inputArea = new Panel();
@@ -349,12 +370,66 @@ namespace VarNamer
                 Recalc();
             };
 
-            Panel rowsWrap = new Panel();
+            rowsWrap = new Panel();
             rowsWrap.Dock = DockStyle.Fill;
             rowsWrap.BackColor = Theme.Bg;
             rowsWrap.Padding = new Padding(Theme.S(12), 0, Theme.S(12), Theme.S(10));
             rowsWrap.Controls.Add(rowsHost);
             rowsWrap.Controls.Add(groupStrip);
+
+            // ---------- 桌面挂件（收起态）----------
+            chipPanel = new Panel();
+            chipPanel.Dock = DockStyle.Fill;
+            chipPanel.BackColor = Theme.Bg;
+            chipPanel.Visible = false;
+            chipPanel.Cursor = Cursors.Hand;
+            ToolTip chipTip = new ToolTip();
+            chipTip.SetToolTip(chipPanel, "点击展开悬浮窗 · 按住可拖动");
+
+            Label chipIcon = new Label();
+            chipIcon.AutoSize = false;
+            chipIcon.BackColor = Color.Transparent;
+            chipIcon.TextAlign = ContentAlignment.MiddleCenter;
+            chipIcon.Text = "V";
+            chipIcon.Font = new Font("Microsoft YaHei UI", 9f, FontStyle.Bold);
+            chipIcon.ForeColor = Theme.Accent;
+            chipIcon.SetBounds(Theme.S(10), Theme.S(9), Theme.S(18), Theme.S(18));
+            chipIcon.Cursor = Cursors.Hand;
+            chipPanel.Controls.Add(chipIcon);
+
+            Label chipText = new Label();
+            chipText.AutoSize = false;
+            chipText.BackColor = Color.Transparent;
+            chipText.TextAlign = ContentAlignment.MiddleLeft;
+            chipText.Text = "VarNamer";
+            chipText.Font = Theme.FontSmallBold;
+            chipText.ForeColor = Theme.TextPrimary;
+            chipText.SetBounds(Theme.S(32), 0, Theme.S(88), Theme.S(38));
+            chipText.Cursor = Cursors.Hand;
+            chipPanel.Controls.Add(chipText);
+
+            Label chipHint = new Label();
+            chipHint.AutoSize = false;
+            chipHint.BackColor = Color.Transparent;
+            chipHint.TextAlign = ContentAlignment.MiddleCenter;
+            chipHint.Text = "▸";
+            chipHint.Font = Theme.FontSmall;
+            chipHint.ForeColor = Theme.TextMuted;
+            chipHint.SetBounds(Theme.S(122), 0, Theme.S(18), Theme.S(38));
+            chipHint.Cursor = Cursors.Hand;
+            chipPanel.Controls.Add(chipHint);
+
+            // 点一下展开；按住拖动移动；hover 时由半透明变全亮
+            chipPanel.MouseDown += ChipDown;
+            chipPanel.MouseMove += ChipMove;
+            chipPanel.MouseUp += ChipUp;
+            chipIcon.MouseDown += ChipDown; chipIcon.MouseMove += ChipMove; chipIcon.MouseUp += ChipUp;
+            chipText.MouseDown += ChipDown; chipText.MouseMove += ChipMove; chipText.MouseUp += ChipUp;
+            chipHint.MouseDown += ChipDown; chipHint.MouseMove += ChipMove; chipHint.MouseUp += ChipUp;
+            chipIcon.MouseEnter += delegate(object s, EventArgs e) { Brighten(); };
+            chipText.MouseEnter += delegate(object s, EventArgs e) { Brighten(); };
+            chipPanel.MouseEnter += delegate(object s, EventArgs e) { Brighten(); };
+            chipPanel.MouseLeave += delegate(object s, EventArgs e) { if (!chipMoved) Dim(); };
 
             lblTip = new Label();
             lblTip.Dock = DockStyle.Bottom;
@@ -367,6 +442,7 @@ namespace VarNamer
             lblTip.Text = "输入中文即可生成 · 点结果行复制";
 
             // 加顺序：Dock 填充的控件后加的先占位，这里按 输入区 → 结果区 → 空状态 → 提示 排列
+            Content.Controls.Add(chipPanel);
             Content.Controls.Add(emptyPanel);
             Content.Controls.Add(rowsWrap);
             Content.Controls.Add(inputArea);
@@ -424,6 +500,78 @@ namespace VarNamer
             return HeaderH + InputH + EmptyH + TipH;
         }
 
+        // ---------- 收起为桌面挂件 / 展开 ----------
+        public bool Collapsed { get { return collapsed; } }
+
+        public void ToggleCollapsed() { SetCollapsed(!collapsed); }
+
+        public void Expand() { SetCollapsed(false); }
+
+        private void SetCollapsed(bool on)
+        {
+            if (collapsed == on) return;
+            if (on)
+            {
+                expandedW = Width;        // 记住展开时的宽度
+                SavePosition();           // 同时记住位置
+                collapsed = true;
+                state.Cfg.FloatVisible = true;
+                ApplyState();
+                ClampChipOnScreen();
+                Tween.FadeIn(this, state.Cfg.FloatOpacityIdle, Theme.DurMed);
+            }
+            else
+            {
+                collapsed = false;
+                ApplyState();
+                int w = expandedW > 0 ? expandedW : state.Cfg.FloatW;
+                if (w > Width) Width = w;      // 还原展开宽度（高度由 ApplyState 定）
+                ClampToScreen();
+                input.InnerBox.Focus();
+            }
+        }
+
+        // 挂件要留在屏幕内（用当前坐标，不能用展开时记住的坐标）
+        private void ClampChipOnScreen()
+        {
+            try
+            {
+                Rectangle wa = Screen.FromPoint(Location).WorkingArea;
+                int x = Math.Max(wa.Left, Math.Min(Location.X, wa.Right - Width));
+                int y = Math.Max(wa.Top, Math.Min(Location.Y, wa.Bottom - Height));
+                Location = new Point(x, y);
+            }
+            catch (Exception) { }
+        }
+
+        // 挂件：按住拖动移动；点一下（没拖动）展开
+        private void ChipDown(object sender, MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Left) return;
+            chipDrag = Cursor.Position;      // 屏幕坐标，避免跨控件坐标系混用
+            chipMoved = false;
+        }
+
+        private void ChipMove(object sender, MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Left) return;
+            Point now = Cursor.Position;
+            int dx = now.X - chipDrag.X, dy = now.Y - chipDrag.Y;
+            if (!chipMoved && Math.Abs(dx) + Math.Abs(dy) < 4) return;   // 抖动阈值
+            chipMoved = true;
+            chipDrag = now;
+            Location = new Point(Location.X + dx, Location.Y + dy);
+        }
+
+        private void ChipUp(object sender, MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Left) return;
+            bool moved = chipMoved;
+            chipMoved = false;
+            if (!moved) Expand();            // 没拖动 → 点击展开
+            else Dim();                      // 拖完回到半透明
+        }
+
         private bool HasAnyValue()
         {
             for (int i = 0; i < rows.Length; i++) if (!string.IsNullOrEmpty(rows[i].Value)) return true;
@@ -433,6 +581,28 @@ namespace VarNamer
         // 有可用结果 → 展开结果列表；空输入、或一个字都没认出来 → 收起，只留输入框
         private void ApplyState()
         {
+            // 收起态：只留一个桌面挂件（宽度 150、高度 38）
+            if (collapsed)
+            {
+                TitleBar.Visible = false;
+                inputArea.Visible = false;
+                emptyPanel.Visible = false;
+                rowsWrap.Visible = false;
+                lblTip.Visible = false;
+                chipPanel.Visible = true;
+                chipPanel.BringToFront();
+                Size chipSize = new Size(Theme.S(150), Theme.S(38));
+                MinimumSize = chipSize;
+                MaximumSize = chipSize;
+                if (Size != chipSize) Size = chipSize;
+                return;
+            }
+            TitleBar.Visible = true;
+            inputArea.Visible = true;
+            lblTip.Visible = true;
+            chipPanel.Visible = false;
+            MaximumSize = new Size(0, 0);
+
             bool typed = input.Text != null && input.Text.Trim().Length > 0;
             bool has = typed && HasAnyValue();
             if (lblEmptyTitle != null)
@@ -548,6 +718,7 @@ namespace VarNamer
         {
             input.Text = text;
             Brighten();                      // 通过热键带文字唤起 = 用户正在用，直接全亮
+            if (collapsed && text != null && text.Trim().Length > 0) Expand();   // 有内容要读 → 自动展开
             input.InnerBox.SelectionStart = input.Text.Length;
             Recalc();
         }
@@ -647,7 +818,7 @@ namespace VarNamer
         {
             state.Cfg.FloatX = Location.X;
             state.Cfg.FloatY = Location.Y;
-            state.Cfg.FloatW = Width;
+            if (!collapsed) state.Cfg.FloatW = Width;   // 挂件态不覆盖展开宽度
             state.Cfg.FloatH = Height;
         }
 

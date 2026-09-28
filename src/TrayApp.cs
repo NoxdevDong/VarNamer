@@ -257,6 +257,7 @@ namespace VarNamer
             }
             catch (Exception) { }
             if (text != null && text.Trim().Length > 0) floater.SetInput(text.Trim());
+            floater.Expand();            // 热键唤起 = 要用它，从挂件恢复
             floater.ShowFloat();
             floater.Activate();
         }
@@ -460,6 +461,7 @@ namespace VarNamer
         public void ShowFloater()
         {
             if (floater == null || floater.IsDisposed) return;
+            floater.Expand();            // 从桌面挂件恢复成完整悬浮窗
             floater.ShowFloat();
             floater.Activate();
             RaiseFloatChanged();
